@@ -57,13 +57,16 @@ public class MenuHandler {
 
     private void showMenu() {
         System.out.println();
-        System.out.println("===== HOSPITAL APPOINTMENT SYSTEM =====");
-        System.out.println("1. Add Appointment");
-        System.out.println("2. View Appointments");
-        System.out.println("3. Cancel Appointment");
-        System.out.println("4. Search Appointment");
-        System.out.println("5. View Report Summary");
-        System.out.println("6. Exit");
+        System.out.println("=======================================");
+        System.out.println("      HOSPITAL APPOINTMENT SYSTEM");
+        System.out.println("=======================================");
+        System.out.println("  1. Add Appointment");
+        System.out.println("  2. View Appointments");
+        System.out.println("  3. Cancel Appointment");
+        System.out.println("  4. Search Appointment");
+        System.out.println("  5. View Report Summary");
+        System.out.println("  6. Exit");
+        System.out.println("=======================================");
     }
 
     private int readMenuChoice() {
@@ -268,8 +271,8 @@ public class MenuHandler {
     }
 
     private void printAppointmentHeader() {
-        System.out.println("-----------------------------------------------------------------------------------------------------------------");
-        System.out.printf("%-13s %-18s %-4s %-18s %-18s %-12s %-8s %-10s%n",
+        System.out.println("=====================================================================================================================================");
+        System.out.printf("| %-13s | %-18s | %-4s | %-18s | %-18s | %-12s | %-8s | %-10s |%n",
                 "App.ID",
                 "Patient",
                 "Age",
@@ -278,16 +281,16 @@ public class MenuHandler {
                 "Date",
                 "Time",
                 "Status");
-        System.out.println("-----------------------------------------------------------------------------------------------------------------");
+        System.out.println("=====================================================================================================================================");
     }
 
     private void printAppointmentRow(Appointment appointment) {
         String doctorLabel = appointment.getDoctor().getName() + "(" + appointment.getDoctor().getDepartment() + ")";
-        System.out.printf("%-13s %-18s %-4d %-18s %-18s %-12s %-8s %-10s%n",
+        System.out.printf("| %-13s | %-18s | %-4d | %-18s | %-18s | %-12s | %-8s | %-10s |%n",
                 appointment.getAppointmentId(),
-                appointment.getPatient().getName(),
+                truncate(appointment.getPatient().getName(), 18),
                 appointment.getPatient().getAge(),
-                appointment.getPatient().getAddress(),
+                truncate(appointment.getPatient().getAddress(), 18),
                 truncate(doctorLabel, 18),
                 appointment.getDate(),
                 DateTimeValidator.formatTime(appointment.getTime()),
