@@ -1,9 +1,11 @@
 package com.hospital.appointment.ui;
 
 import com.hospital.appointment.enums.AppointmentStatus;
+import com.hospital.appointment.enums.WaitlistStatus;
 import com.hospital.appointment.model.Appointment;
 import com.hospital.appointment.model.Doctor;
 import com.hospital.appointment.model.Patient;
+import com.hospital.appointment.model.WaitlistEntry;
 import com.hospital.appointment.service.AppointmentManager;
 import com.hospital.appointment.util.DateTimeValidator;
 import com.hospital.appointment.util.InputValidator;
@@ -59,6 +61,12 @@ public class MenuHandler {
                     viewDoctorDailyScheduleFlow();
                     break;
                 case 10:
+                    joinWaitlistFlow();
+                    break;
+                case 11:
+                    viewWaitlistFlow();
+                    break;
+                case 12:
                     running = false;
                     System.out.println("Exiting system. Goodbye.");
                     break;
@@ -82,7 +90,9 @@ public class MenuHandler {
         System.out.println("  7. Mark Appointment Completed");
         System.out.println("  8. View Patient History");
         System.out.println("  9. View Doctor Daily Schedule");
-        System.out.println(" 10. Exit");
+        System.out.println(" 10. Join Waitlist");
+        System.out.println(" 11. View Waitlist");
+        System.out.println(" 12. Exit");
         System.out.println("=======================================");
     }
 
@@ -91,7 +101,7 @@ public class MenuHandler {
             try {
                 System.out.print("Select option: ");
                 String input = scanner.nextLine();
-                return InputValidator.parseMenuChoice(input, 1, 10);
+                return InputValidator.parseMenuChoice(input, 1, 12);
             } catch (IllegalArgumentException exception) {
                 System.out.println("Input error: " + exception.getMessage());
             }
@@ -111,6 +121,21 @@ public class MenuHandler {
             LocalDate date = readDate();
             LocalTime time = chooseAvailableTime(doctor.getDoctorId(), date);
             if (time == null) {
+                if (readYesNo("No slots available. Add patient to waitlist for this doctor and date? (y/n): ")) {
+                    LocalTime preferredTime = chooseWaitlistTime(doctor.getDoctorId(), date);
+                    if (preferredTime != null) {
+                        Patient patient = new Patient("", name, age, address);
+                        WaitlistEntry entry = appointmentManager.addToWaitlist(
+                                patient,
+                                doctor.getDoctorId(),
+                                date,
+                                preferredTime
+                        );
+                        System.out.println("Patient added to waitlist successfully.");
+                        System.out.println("Waitlist ID: " + entry.getWaitlistId());
+                        System.out.println("Patient ID: " + entry.getPatient().getPatientId());
+                    }
+                }
                 return;
             }
 
@@ -123,6 +148,49 @@ public class MenuHandler {
         } catch (Exception exception) {
             System.out.println("Could not add appointment: " + exception.getMessage());
         }
+    }
+
+    private void joinWaitlistFlow() {
+        System.out.println();
+        System.out.println("--- Join Waitlist ---");
+
+        try {
+            String name = readNonBlank("Patient name: ");
+            int age = readPositiveAge();
+            String address = readNonBlank("Patient address: ");
+
+            Doctor doctor = chooseDoctor();
+            LocalDate date = readDate();
+            LocalTime time = chooseWaitlistTime(doctor.getDoctorId(), date);
+            if (time == null) {
+                return;
+            }
+
+            Patient patient = new Patient("", name, age, address);
+            WaitlistEntry entry = appointmentManager.addToWaitlist(patient, doctor.getDoctorId(), date, time);
+            System.out.println("Patient added to waitlist successfully.");
+            System.out.println("Waitlist ID: " + entry.getWaitlistId());
+            System.out.println("Patient ID: " + entry.getPatient().getPatientId());
+        } catch (Exception exception) {
+            System.out.println("Could not add waitlist entry: " + exception.getMessage());
+        }
+    }
+
+    private void viewWaitlistFlow() {
+        System.out.println();
+        System.out.println("--- Waitlist ---");
+
+        List<WaitlistEntry> entries = appointmentManager.viewWaitlist();
+        if (entries.isEmpty()) {
+            System.out.println("No waitlist entries found.");
+            return;
+        }
+
+        printWaitlistHeader();
+        for (WaitlistEntry entry : entries) {
+            printWaitlistRow(entry);
+        }
+        printWaitlistSummary(entries);
     }
 
     private void viewAppointmentsFlow() {
@@ -398,6 +466,37 @@ public class MenuHandler {
         }
     }
 
+    private LocalTime chooseWaitlistTime(String doctorId, LocalDate date) {
+        List<LocalTime> availableSlots = appointmentManager.getAvailableTimeSlots(doctorId, date);
+        List<LocalTime> preferredSlots = new java.util.ArrayList<LocalTime>();
+
+        for (LocalTime slot : appointmentManager.getTimeSlots()) {
+            if (!availableSlots.contains(slot)) {
+                preferredSlots.add(slot);
+            }
+        }
+
+        if (preferredSlots.isEmpty()) {
+            System.out.println("No occupied slots found. At least one time slot is still available for booking.");
+            return null;
+        }
+
+        System.out.println("Booked slots available for waitlist:");
+        for (int index = 0; index < preferredSlots.size(); index++) {
+            System.out.println((index + 1) + ". " + DateTimeValidator.formatTime(preferredSlots.get(index)));
+        }
+
+        while (true) {
+            try {
+                System.out.print("Choose preferred booked slot number: ");
+                int choice = InputValidator.parseMenuChoice(scanner.nextLine(), 1, preferredSlots.size());
+                return preferredSlots.get(choice - 1);
+            } catch (IllegalArgumentException exception) {
+                System.out.println("Input error: " + exception.getMessage());
+            }
+        }
+    }
+
     private int readPositiveAge() {
         while (true) {
             try {
@@ -465,6 +564,56 @@ public class MenuHandler {
                 + ", Booked: " + booked
                 + ", Cancelled: " + cancelled
                 + ", Completed: " + completed);
+    }
+
+    private void printWaitlistHeader() {
+        System.out.println("=================================================================================================================================================");
+        System.out.printf("| %-12s | %-18s | %-3s | %-18s | %-18s | %-10s | %-8s | %-11s | %-13s |%n",
+                "Waitlist ID",
+                "Patient",
+                "Age",
+                "Address",
+                "Doctor(Dept)",
+                "Date",
+                "Time",
+                "Status",
+                "AutoFill App");
+        System.out.println("=================================================================================================================================================");
+    }
+
+    private void printWaitlistRow(WaitlistEntry entry) {
+        String doctorLabel = entry.getDoctor().getName() + "(" + entry.getDoctor().getDepartment() + ")";
+        System.out.printf("| %-12s | %-18s | %-3d | %-18s | %-18s | %-10s | %-8s | %-11s | %-13s |%n",
+                entry.getWaitlistId(),
+                truncate(entry.getPatient().getName(), 18),
+                entry.getPatient().getAge(),
+                truncate(entry.getPatient().getAddress(), 18),
+                truncate(doctorLabel, 18),
+                entry.getDate(),
+                DateTimeValidator.formatTime(entry.getTime()),
+                entry.getStatus(),
+                truncate(entry.getFulfilledAppointmentId(), 13));
+    }
+
+    private void printWaitlistSummary(List<WaitlistEntry> entries) {
+        int waiting = 0;
+        int autoFilled = 0;
+        int cancelled = 0;
+
+        for (WaitlistEntry entry : entries) {
+            if (entry.getStatus() == WaitlistStatus.WAITING) {
+                waiting++;
+            } else if (entry.getStatus() == WaitlistStatus.AUTO_FILLED) {
+                autoFilled++;
+            } else if (entry.getStatus() == WaitlistStatus.CANCELLED) {
+                cancelled++;
+            }
+        }
+
+        System.out.println("Waitlist Summary -> Total: " + entries.size()
+                + ", Waiting: " + waiting
+                + ", Auto-Filled: " + autoFilled
+                + ", Cancelled: " + cancelled);
     }
 
     private void printAppointmentHeader() {
