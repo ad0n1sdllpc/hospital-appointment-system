@@ -18,6 +18,14 @@ public interface AppointmentService {
 
     List<Appointment> searchAppointment(String patientName, LocalDate date, String doctorName);
 
+    Appointment rescheduleAppointment(String appointmentId, LocalDate newDate, LocalTime newTime);
+
+    boolean completeAppointment(String appointmentId);
+
+    List<Appointment> getPatientHistory(String patientName);
+
+    List<Appointment> getDoctorDailySchedule(String doctorId, LocalDate date);
+
     Map<String, Integer> getReportSummary();
 
     List<Doctor> getDoctors();

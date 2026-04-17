@@ -109,7 +109,7 @@ public class AppointmentManager implements AppointmentService {
 
         for (Appointment appointment : appointments) {
             if (appointment.getAppointmentId().equalsIgnoreCase(appointmentId.trim())) {
-                if (appointment.getStatus() == AppointmentStatus.CANCELLED) {
+                if (appointment.getStatus() != AppointmentStatus.BOOKED) {
                     return false;
                 }
                 appointment.setStatus(AppointmentStatus.CANCELLED);
@@ -145,16 +145,135 @@ public class AppointmentManager implements AppointmentService {
     }
 
     @Override
+    public Appointment rescheduleAppointment(String appointmentId, LocalDate newDate, LocalTime newTime) {
+        InputValidator.requireNonBlank(appointmentId, "Appointment ID");
+        if (newDate == null) {
+            throw new IllegalArgumentException("Date is required.");
+        }
+        if (newTime == null) {
+            throw new IllegalArgumentException("Time is required.");
+        }
+        DateTimeValidator.ensureNotPast(newDate);
+
+        Appointment appointment = findAppointmentById(appointmentId);
+        if (appointment == null) {
+            throw new IllegalArgumentException("Appointment not found for ID: " + appointmentId);
+        }
+
+        if (appointment.getStatus() != AppointmentStatus.BOOKED) {
+            throw new IllegalStateException("Only booked appointments can be rescheduled.");
+        }
+
+        if (!timeSlots.contains(newTime)) {
+            throw new IllegalArgumentException("Invalid time slot.");
+        }
+
+        String doctorId = appointment.getDoctor().getDoctorId();
+        if (isDuplicateActiveScheduleExceptAppointment(doctorId, newDate, newTime, appointment.getAppointmentId())) {
+            throw new IllegalStateException("Selected doctor is already booked for that date and time.");
+        }
+
+        appointment.setDate(newDate);
+        appointment.setTime(newTime);
+        autoSave();
+        return appointment;
+    }
+
+    @Override
+    public boolean completeAppointment(String appointmentId) {
+        InputValidator.requireNonBlank(appointmentId, "Appointment ID");
+
+        Appointment appointment = findAppointmentById(appointmentId);
+        if (appointment == null) {
+            return false;
+        }
+
+        if (appointment.getStatus() != AppointmentStatus.BOOKED) {
+            return false;
+        }
+
+        if (appointment.getDate().isAfter(LocalDate.now())) {
+            return false;
+        }
+
+        appointment.setStatus(AppointmentStatus.COMPLETED);
+        autoSave();
+        return true;
+    }
+
+    @Override
+    public List<Appointment> getPatientHistory(String patientName) {
+        String patientKeyword = InputValidator.safeLower(patientName);
+        if (patientKeyword.isEmpty()) {
+            throw new IllegalArgumentException("Patient name is required.");
+        }
+
+        List<Appointment> history = new ArrayList<Appointment>();
+        for (Appointment appointment : appointments) {
+            if (appointment.getPatient().getName().toLowerCase().contains(patientKeyword)) {
+                history.add(appointment);
+            }
+        }
+
+        Collections.sort(history, new Comparator<Appointment>() {
+            @Override
+            public int compare(Appointment first, Appointment second) {
+                int dateCompare = second.getDate().compareTo(first.getDate());
+                if (dateCompare != 0) {
+                    return dateCompare;
+                }
+                return second.getTime().compareTo(first.getTime());
+            }
+        });
+
+        return history;
+    }
+
+    @Override
+    public List<Appointment> getDoctorDailySchedule(String doctorId, LocalDate date) {
+        InputValidator.requireNonBlank(doctorId, "Doctor ID");
+        if (date == null) {
+            throw new IllegalArgumentException("Date is required.");
+        }
+
+        Doctor doctor = findDoctorById(doctorId);
+        if (doctor == null) {
+            throw new IllegalArgumentException("Doctor not found for ID: " + doctorId);
+        }
+
+        List<Appointment> schedule = new ArrayList<Appointment>();
+        for (Appointment appointment : appointments) {
+            boolean sameDoctor = appointment.getDoctor().getDoctorId().equalsIgnoreCase(doctor.getDoctorId());
+            boolean sameDate = appointment.getDate().equals(date);
+            if (sameDoctor && sameDate) {
+                schedule.add(appointment);
+            }
+        }
+
+        Collections.sort(schedule, new Comparator<Appointment>() {
+            @Override
+            public int compare(Appointment first, Appointment second) {
+                return first.getTime().compareTo(second.getTime());
+            }
+        });
+
+        return schedule;
+    }
+
+    @Override
     public Map<String, Integer> getReportSummary() {
         int total = appointments.size();
         int booked = 0;
         int cancelled = 0;
+        int completed = 0;
 
         for (Appointment appointment : appointments) {
             if (appointment.getStatus() == AppointmentStatus.BOOKED) {
                 booked++;
             } else if (appointment.getStatus() == AppointmentStatus.CANCELLED) {
                 cancelled++;
+            } else if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
+                completed++;
             }
         }
 
@@ -162,6 +281,7 @@ public class AppointmentManager implements AppointmentService {
         summary.put("total", total);
         summary.put("booked", booked);
         summary.put("cancelled", cancelled);
+        summary.put("completed", completed);
         return summary;
     }
 
@@ -238,6 +358,35 @@ public class AppointmentManager implements AppointmentService {
             }
         }
         return false;
+    }
+
+    private boolean isDuplicateActiveScheduleExceptAppointment(String doctorId, LocalDate date, LocalTime time,
+                                                               String appointmentIdToIgnore) {
+        for (Appointment appointment : appointments) {
+            boolean sameId = appointment.getAppointmentId().equalsIgnoreCase(appointmentIdToIgnore.trim());
+            if (sameId) {
+                continue;
+            }
+
+            boolean sameDoctor = appointment.getDoctor().getDoctorId().equalsIgnoreCase(doctorId.trim());
+            boolean sameDate = appointment.getDate().equals(date);
+            boolean sameTime = appointment.getTime().equals(time);
+            boolean active = appointment.getStatus() == AppointmentStatus.BOOKED;
+
+            if (sameDoctor && sameDate && sameTime && active) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Appointment findAppointmentById(String appointmentId) {
+        for (Appointment appointment : appointments) {
+            if (appointment.getAppointmentId().equalsIgnoreCase(appointmentId.trim())) {
+                return appointment;
+            }
+        }
+        return null;
     }
 
     private void autoSave() {
