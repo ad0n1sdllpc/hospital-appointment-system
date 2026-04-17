@@ -1,8 +1,10 @@
 package com.hospital.appointment.qa;
 
+import com.hospital.appointment.enums.WaitlistStatus;
 import com.hospital.appointment.model.Appointment;
 import com.hospital.appointment.model.Doctor;
 import com.hospital.appointment.model.Patient;
+import com.hospital.appointment.model.WaitlistEntry;
 import com.hospital.appointment.service.AppointmentManager;
 import com.hospital.appointment.storage.FileHandler;
 
@@ -17,6 +19,7 @@ import java.util.Map;
 
 public class QATestRunner {
     private static final String DEFAULT_FILE_PATH = "data/qa-phase1-appointments.txt";
+    private static final String DEFAULT_WAITLIST_FILE_PATH = "data/qa-phase2-waitlist.txt";
 
     private int passed;
     private int failed;
@@ -50,15 +53,19 @@ public class QATestRunner {
 
     private int execute(String filePath, boolean keepFile) {
         Path qaPath = Paths.get(filePath);
+        Path waitlistPath = Paths.get(DEFAULT_WAITLIST_FILE_PATH);
 
         try {
             Files.deleteIfExists(qaPath);
-            AppointmentManager manager = new AppointmentManager(new FileHandler(filePath));
+            Files.deleteIfExists(waitlistPath);
+            AppointmentManager manager = new AppointmentManager(new FileHandler(filePath, DEFAULT_WAITLIST_FILE_PATH));
             runScenarios(manager);
 
-            AppointmentManager reloaded = new AppointmentManager(new FileHandler(filePath));
+            AppointmentManager reloaded = new AppointmentManager(new FileHandler(filePath, DEFAULT_WAITLIST_FILE_PATH));
             assertEquals(manager.viewAppointments().size(), reloaded.viewAppointments().size(),
                     "Auto-save persists appointment count");
+            assertEquals(manager.viewWaitlist().size(), reloaded.viewWaitlist().size(),
+                "Auto-save persists waitlist count");
 
             printSummary(filePath);
             return failed == 0 ? 0 : 1;
@@ -69,6 +76,7 @@ public class QATestRunner {
             if (!keepFile) {
                 try {
                     Files.deleteIfExists(qaPath);
+                    Files.deleteIfExists(waitlistPath);
                 } catch (Exception ignored) {
                     // Best effort cleanup for temporary QA file.
                 }
@@ -179,6 +187,111 @@ public class QATestRunner {
         Map<String, Integer> summary = manager.getReportSummary();
         Integer completed = summary.get("completed");
         assertTrue(completed != null && completed.intValue() >= 1, "Report summary includes completed count");
+
+        LocalDate waitlistDate = LocalDate.now().plusDays(6);
+        List<LocalTime> baseSlots = manager.getTimeSlots();
+        for (int i = 0; i < baseSlots.size(); i++) {
+            manager.addAppointment(
+                    new Patient("", "QA Fill Slot " + i, 25 + i, "Fill Street " + i),
+                    doctor.getDoctorId(),
+                    waitlistDate,
+                    baseSlots.get(i)
+            );
+        }
+
+        List<LocalTime> waitlistAvailable = manager.getAvailableTimeSlots(doctor.getDoctorId(), waitlistDate);
+        assertEquals(Integer.valueOf(0), Integer.valueOf(waitlistAvailable.size()),
+                "Precondition: waitlist date fully booked for doctor");
+
+        LocalTime targetSlot = baseSlots.get(0);
+        WaitlistEntry firstQueue = manager.addToWaitlist(
+                new Patient("", "Waitlist Alpha", 41, "Queue Street 1"),
+                doctor.getDoctorId(),
+                waitlistDate,
+                targetSlot
+        );
+        WaitlistEntry secondQueue = manager.addToWaitlist(
+                new Patient("", "Waitlist Beta", 42, "Queue Street 2"),
+                doctor.getDoctorId(),
+                waitlistDate,
+                targetSlot
+        );
+
+        assertTrue(firstQueue.getStatus() == WaitlistStatus.WAITING, "First waitlist entry starts as waiting");
+        assertTrue(secondQueue.getStatus() == WaitlistStatus.WAITING, "Second waitlist entry starts as waiting");
+
+        Appointment bookedAtTarget = findBookedAppointment(manager, doctor.getDoctorId(), waitlistDate, targetSlot);
+        assertNotNull(bookedAtTarget, "Booked appointment exists on target slot before cancellation");
+        if (bookedAtTarget == null) {
+            return;
+        }
+
+        boolean cancelledForAutoFill = manager.cancelAppointment(bookedAtTarget.getAppointmentId());
+        assertTrue(cancelledForAutoFill, "Cancel succeeds and triggers auto-fill attempt");
+
+        WaitlistEntry firstAfterAutoFill = findWaitlistById(manager, firstQueue.getWaitlistId());
+        WaitlistEntry secondAfterAutoFill = findWaitlistById(manager, secondQueue.getWaitlistId());
+        assertTrue(firstAfterAutoFill != null && firstAfterAutoFill.getStatus() == WaitlistStatus.AUTO_FILLED,
+                "First-in-queue is auto-filled after cancellation");
+        assertTrue(secondAfterAutoFill != null && secondAfterAutoFill.getStatus() == WaitlistStatus.WAITING,
+                "Second waitlist entry stays waiting after first auto-fill");
+
+        Appointment autoFilledBooking = findBookedAppointmentByPatient(
+                manager,
+                doctor.getDoctorId(),
+                waitlistDate,
+                targetSlot,
+                "Waitlist Alpha"
+        );
+        assertNotNull(autoFilledBooking, "Auto-filled booking created for first waitlist patient");
+
+        if (autoFilledBooking != null) {
+            boolean cancelSecondAutoFillTrigger = manager.cancelAppointment(autoFilledBooking.getAppointmentId());
+            assertTrue(cancelSecondAutoFillTrigger, "Second cancellation succeeds and triggers queue again");
+        }
+
+        WaitlistEntry secondAfterSecondTrigger = findWaitlistById(manager, secondQueue.getWaitlistId());
+        assertTrue(secondAfterSecondTrigger != null && secondAfterSecondTrigger.getStatus() == WaitlistStatus.AUTO_FILLED,
+                "Second queue entry is auto-filled after next cancellation");
+    }
+
+    private Appointment findBookedAppointment(AppointmentManager manager, String doctorId, LocalDate date, LocalTime time) {
+        List<Appointment> schedule = manager.getDoctorDailySchedule(doctorId, date);
+        for (Appointment appointment : schedule) {
+            boolean sameTime = appointment.getTime().equals(time);
+            boolean booked = appointment.getStatus().name().equals("BOOKED");
+            if (sameTime && booked) {
+                return appointment;
+            }
+        }
+        return null;
+    }
+
+    private Appointment findBookedAppointmentByPatient(AppointmentManager manager,
+                                                       String doctorId,
+                                                       LocalDate date,
+                                                       LocalTime time,
+                                                       String patientName) {
+        List<Appointment> schedule = manager.getDoctorDailySchedule(doctorId, date);
+        for (Appointment appointment : schedule) {
+            boolean sameTime = appointment.getTime().equals(time);
+            boolean booked = appointment.getStatus().name().equals("BOOKED");
+            boolean samePatient = appointment.getPatient().getName().equalsIgnoreCase(patientName);
+            if (sameTime && booked && samePatient) {
+                return appointment;
+            }
+        }
+        return null;
+    }
+
+    private WaitlistEntry findWaitlistById(AppointmentManager manager, String waitlistId) {
+        List<WaitlistEntry> entries = manager.viewWaitlist();
+        for (WaitlistEntry entry : entries) {
+            if (entry.getWaitlistId().equalsIgnoreCase(waitlistId)) {
+                return entry;
+            }
+        }
+        return null;
     }
 
     private void assertTrue(boolean condition, String name) {

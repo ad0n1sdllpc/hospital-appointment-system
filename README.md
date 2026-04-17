@@ -29,8 +29,13 @@ It supports:
 - Doctor and department selection from a predefined list
 - Time slot availability checks per doctor and date
 - Appointment cancellation by ID (status update only, no hard delete)
+- Appointment rescheduling with active-slot conflict prevention
+- Appointment completion flow for today/past schedules
+- Patient history and doctor daily schedule views
+- Waitlist registration for fully booked slots
+- Immediate first-in-queue auto-fill when cancellations occur
 - Search by patient name, doctor name, or date
-- Automatic file save after add and cancel operations
+- Automatic file save after add/cancel/reschedule/complete/waitlist changes
 
 ## Key Features
 
@@ -47,6 +52,7 @@ It supports:
   - Total appointments
   - Total booked
   - Total cancelled
+  - Total completed
 
 ## Architecture
 
@@ -61,10 +67,11 @@ flowchart LR
     C --> G[DateTimeValidator]
     C --> H[IdGenerator]
 
-    C --> I[Models: Person, Patient, Doctor, Appointment]
-    C --> J[Enums: Department, AppointmentStatus]
+    C --> I[Models: Person, Patient, Doctor, Appointment, WaitlistEntry]
+    C --> J[Enums: Department, AppointmentStatus, WaitlistStatus]
 
     E --> K[data/appointments.txt]
+    E --> L[data/waitlist.txt]
 ```
 
 ## Project Structure
@@ -73,17 +80,22 @@ flowchart LR
 hospital-appointment-system/
 |-- data/
 |   |-- appointments.txt
+|   |-- waitlist.txt
 |-- src/
 |   |-- com/hospital/appointment/
 |       |-- Main.java
 |       |-- enums/
 |       |   |-- AppointmentStatus.java
 |       |   |-- Department.java
+|       |   |-- WaitlistStatus.java
 |       |-- model/
 |       |   |-- Appointment.java
 |       |   |-- Doctor.java
 |       |   |-- Patient.java
 |       |   |-- Person.java
+|       |   |-- WaitlistEntry.java
+|       |-- qa/
+|       |   |-- QATestRunner.java
 |       |-- service/
 |       |   |-- AppointmentManager.java
 |       |   |-- AppointmentService.java
@@ -123,6 +135,12 @@ javac -d out $sources
 java -cp out com.hospital.appointment.Main
 ```
 
+### Run QA Scenario Suite
+
+```powershell
+java -cp out com.hospital.appointment.qa.QATestRunner
+```
+
 ### Build and Run (macOS/Linux)
 
 ```bash
@@ -140,9 +158,15 @@ When the app starts, choose from the menu:
 3. Cancel Appointment
 4. Search Appointment
 5. View Report Summary
-6. Exit
+6. Reschedule Appointment
+7. Mark Appointment Completed
+8. View Patient History
+9. View Doctor Daily Schedule
+10. Join Waitlist
+11. View Waitlist
+12. Exit
 
-## Data Storage Format
+## Data Storage Formats
 
 Appointments are stored in a pipe-delimited format in data/appointments.txt.
 
@@ -165,6 +189,30 @@ Fields:
 9. Time
 10. Status
 
+Waitlist entries are stored in a separate pipe-delimited file: data/waitlist.txt.
+
+Example:
+
+```text
+WLT-2026-001|PAT-011|Waitlist Alpha|41|Queue Street 1|D-01|Dr. Smith|CARDIOLOGY|2026-04-23|09:00|WAITING|2026-04-17T15:10:30|
+```
+
+Fields:
+
+1. Waitlist ID
+2. Patient ID
+3. Patient Name
+4. Patient Age
+5. Patient Address
+6. Doctor ID
+7. Doctor Name
+8. Department
+9. Preferred Date
+10. Preferred Time
+11. Waitlist Status
+12. Created At
+13. Auto-filled Appointment ID (empty until auto-filled)
+
 ## Sample Console Screenshots
 
 Add screenshots to docs/screenshots using the filenames below to auto-display them in this README.
@@ -185,7 +233,7 @@ Install JDK and make sure the JDK bin directory is in your system PATH. Reopen t
 
 ### No data loaded on first run
 
-This is normal. data/appointments.txt is created and populated after your first successful booking.
+This is normal. data/appointments.txt and data/waitlist.txt are created when needed.
 
 ### Invalid date or menu inputs
 
