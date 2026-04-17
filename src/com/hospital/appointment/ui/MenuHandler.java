@@ -1,5 +1,6 @@
 package com.hospital.appointment.ui;
 
+import com.hospital.appointment.enums.AppointmentStatus;
 import com.hospital.appointment.model.Appointment;
 import com.hospital.appointment.model.Doctor;
 import com.hospital.appointment.model.Patient;
@@ -46,6 +47,18 @@ public class MenuHandler {
                     viewReportSummaryFlow();
                     break;
                 case 6:
+                    rescheduleAppointmentFlow();
+                    break;
+                case 7:
+                    markAppointmentCompletedFlow();
+                    break;
+                case 8:
+                    viewPatientHistoryFlow();
+                    break;
+                case 9:
+                    viewDoctorDailyScheduleFlow();
+                    break;
+                case 10:
                     running = false;
                     System.out.println("Exiting system. Goodbye.");
                     break;
@@ -65,7 +78,11 @@ public class MenuHandler {
         System.out.println("  3. Cancel Appointment");
         System.out.println("  4. Search Appointment");
         System.out.println("  5. View Report Summary");
-        System.out.println("  6. Exit");
+        System.out.println("  6. Reschedule Appointment");
+        System.out.println("  7. Mark Appointment Completed");
+        System.out.println("  8. View Patient History");
+        System.out.println("  9. View Doctor Daily Schedule");
+        System.out.println(" 10. Exit");
         System.out.println("=======================================");
     }
 
@@ -74,7 +91,7 @@ public class MenuHandler {
             try {
                 System.out.print("Select option: ");
                 String input = scanner.nextLine();
-                return InputValidator.parseMenuChoice(input, 1, 6);
+                return InputValidator.parseMenuChoice(input, 1, 10);
             } catch (IllegalArgumentException exception) {
                 System.out.println("Input error: " + exception.getMessage());
             }
@@ -182,10 +199,135 @@ public class MenuHandler {
         System.out.println();
         System.out.println("--- Report Summary ---");
         Map<String, Integer> summary = appointmentManager.getReportSummary();
+        int completed = summary.get("completed") == null ? 0 : summary.get("completed");
 
         System.out.println("Total appointments: " + summary.get("total"));
         System.out.println("Total booked: " + summary.get("booked"));
         System.out.println("Total cancelled: " + summary.get("cancelled"));
+        System.out.println("Total completed: " + completed);
+    }
+
+    private void rescheduleAppointmentFlow() {
+        System.out.println();
+        System.out.println("--- Reschedule Appointment ---");
+
+        String appointmentId = readNonBlank("Enter Appointment ID: ");
+        Appointment current = findAppointmentById(appointmentId);
+        if (current == null) {
+            System.out.println("Appointment not found.");
+            return;
+        }
+
+        if (current.getStatus() != AppointmentStatus.BOOKED) {
+            System.out.println("Only booked appointments can be rescheduled.");
+            return;
+        }
+
+        LocalDate newDate = readDate();
+        LocalTime newTime = chooseAvailableTime(current.getDoctor().getDoctorId(), newDate);
+        if (newTime == null) {
+            return;
+        }
+
+        String fromSchedule = current.getDate() + " " + DateTimeValidator.formatTime(current.getTime());
+        String toSchedule = newDate + " " + DateTimeValidator.formatTime(newTime);
+        if (!readYesNo("Confirm reschedule from " + fromSchedule + " to " + toSchedule + "? (y/n): ")) {
+            System.out.println("Reschedule cancelled by user.");
+            return;
+        }
+
+        try {
+            appointmentManager.rescheduleAppointment(appointmentId, newDate, newTime);
+            System.out.println("Appointment rescheduled successfully.");
+        } catch (Exception exception) {
+            System.out.println("Could not reschedule appointment: " + exception.getMessage());
+        }
+    }
+
+    private void markAppointmentCompletedFlow() {
+        System.out.println();
+        System.out.println("--- Mark Appointment Completed ---");
+
+        String appointmentId = readNonBlank("Enter Appointment ID: ");
+        Appointment current = findAppointmentById(appointmentId);
+        if (current == null) {
+            System.out.println("Appointment not found.");
+            return;
+        }
+
+        if (current.getStatus() == AppointmentStatus.CANCELLED) {
+            System.out.println("Cancelled appointments cannot be marked as completed.");
+            return;
+        }
+
+        if (current.getStatus() == AppointmentStatus.COMPLETED) {
+            System.out.println("Appointment is already completed.");
+            return;
+        }
+
+        if (current.getDate().isAfter(LocalDate.now())) {
+            System.out.println("Only appointments scheduled for today or past dates can be completed.");
+            return;
+        }
+
+        if (!readYesNo("Confirm marking appointment as completed? (y/n): ")) {
+            System.out.println("No changes made.");
+            return;
+        }
+
+        boolean completed = appointmentManager.completeAppointment(appointmentId);
+        if (completed) {
+            System.out.println("Appointment marked as completed successfully.");
+        } else {
+            System.out.println("Could not mark appointment as completed.");
+        }
+    }
+
+    private void viewPatientHistoryFlow() {
+        System.out.println();
+        System.out.println("--- Patient History ---");
+
+        try {
+            String patientName = readNonBlank("Enter patient name: ");
+            List<Appointment> history = appointmentManager.getPatientHistory(patientName);
+
+            if (history.isEmpty()) {
+                System.out.println("No appointment history found for the provided patient name.");
+                return;
+            }
+
+            printAppointmentHeader();
+            for (Appointment appointment : history) {
+                printAppointmentRow(appointment);
+            }
+            printStatusSummary(history);
+        } catch (Exception exception) {
+            System.out.println("Could not load patient history: " + exception.getMessage());
+        }
+    }
+
+    private void viewDoctorDailyScheduleFlow() {
+        System.out.println();
+        System.out.println("--- Doctor Daily Schedule ---");
+
+        try {
+            Doctor doctor = chooseDoctor();
+            LocalDate date = readDateAllowPast("Schedule date (yyyy-MM-dd): ");
+            List<Appointment> schedule = appointmentManager.getDoctorDailySchedule(doctor.getDoctorId(), date);
+
+            if (schedule.isEmpty()) {
+                System.out.println("No schedule entries for selected doctor and date.");
+                return;
+            }
+
+            printAppointmentHeader();
+            for (Appointment appointment : schedule) {
+                printAppointmentRow(appointment);
+            }
+            printStatusSummary(schedule);
+        } catch (Exception exception) {
+            System.out.println("Could not load doctor schedule: " + exception.getMessage());
+        }
     }
 
     private Doctor chooseDoctor() {
@@ -215,6 +357,17 @@ public class MenuHandler {
                 LocalDate date = DateTimeValidator.parseDate(dateInput);
                 DateTimeValidator.ensureNotPast(date);
                 return date;
+            } catch (IllegalArgumentException exception) {
+                System.out.println("Date error: " + exception.getMessage());
+            }
+        }
+    }
+
+    private LocalDate readDateAllowPast(String prompt) {
+        while (true) {
+            try {
+                String dateInput = readNonBlank(prompt);
+                return DateTimeValidator.parseDate(dateInput);
             } catch (IllegalArgumentException exception) {
                 System.out.println("Date error: " + exception.getMessage());
             }
@@ -268,6 +421,50 @@ public class MenuHandler {
                 System.out.println("Input error: " + exception.getMessage());
             }
         }
+    }
+
+    private boolean readYesNo(String prompt) {
+        while (true) {
+            System.out.print(prompt);
+            String input = scanner.nextLine().trim().toLowerCase();
+            if ("y".equals(input) || "yes".equals(input)) {
+                return true;
+            }
+            if ("n".equals(input) || "no".equals(input)) {
+                return false;
+            }
+            System.out.println("Input error: Please type y/yes or n/no.");
+        }
+    }
+
+    private Appointment findAppointmentById(String appointmentId) {
+        for (Appointment appointment : appointmentManager.viewAppointments()) {
+            if (appointment.getAppointmentId().equalsIgnoreCase(appointmentId.trim())) {
+                return appointment;
+            }
+        }
+        return null;
+    }
+
+    private void printStatusSummary(List<Appointment> appointments) {
+        int booked = 0;
+        int cancelled = 0;
+        int completed = 0;
+
+        for (Appointment appointment : appointments) {
+            if (appointment.getStatus() == AppointmentStatus.BOOKED) {
+                booked++;
+            } else if (appointment.getStatus() == AppointmentStatus.CANCELLED) {
+                cancelled++;
+            } else if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
+                completed++;
+            }
+        }
+
+        System.out.println("Summary -> Total: " + appointments.size()
+                + ", Booked: " + booked
+                + ", Cancelled: " + cancelled
+                + ", Completed: " + completed);
     }
 
     private void printAppointmentHeader() {
