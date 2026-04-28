@@ -1,10 +1,12 @@
 package com.hospital.appointment.ui;
 
 import com.hospital.appointment.enums.AppointmentStatus;
+import com.hospital.appointment.enums.UserRole;
 import com.hospital.appointment.enums.WaitlistStatus;
 import com.hospital.appointment.model.Appointment;
 import com.hospital.appointment.model.Doctor;
 import com.hospital.appointment.model.Patient;
+import com.hospital.appointment.model.SessionContext;
 import com.hospital.appointment.model.WaitlistEntry;
 import com.hospital.appointment.service.AppointmentManager;
 import com.hospital.appointment.util.DateTimeValidator;
@@ -18,18 +20,32 @@ import java.util.Scanner;
 
 public class MenuHandler {
     private final AppointmentManager appointmentManager;
+    private final SessionContext session;
     private final Scanner scanner;
 
-    public MenuHandler(AppointmentManager appointmentManager) {
+    public MenuHandler(AppointmentManager appointmentManager, SessionContext session) {
         this.appointmentManager = appointmentManager;
+        this.session = session;
         this.scanner = new Scanner(System.in);
     }
 
     public void start() {
+        if (session.isAdmin()) {
+            runAdminMenu();
+        } else if (session.isPatient()) {
+            runPatientMenu();
+        } else if (session.isDoctor()) {
+            runDoctorMenu();
+        } else {
+            System.out.println("Unknown role: " + session.getRole());
+        }
+    }
+
+    private void runPatientMenu() {
         boolean running = true;
 
         while (running) {
-            showMenu();
+            showPatientMenu();
             int choice = readMenuChoice();
 
             switch (choice) {
@@ -37,7 +53,116 @@ public class MenuHandler {
                     addAppointmentFlow();
                     break;
                 case 2:
-                    viewAppointmentsFlow();
+                    viewOwnAppointmentsFlow();
+                    break;
+                case 3:
+                    cancelOwnAppointmentFlow();
+                    break;
+                case 4:
+                    viewPatientHistoryFlow();
+                    break;
+                case 5:
+                    joinWaitlistFlow();
+                    break;
+                case 6:
+                    running = false;
+                    System.out.println("Logged out successfully. Goodbye.");
+                    break;
+                default:
+                    System.out.println("Invalid menu option.");
+            }
+        }
+    }
+
+    private void runDoctorMenu() {
+        boolean running = true;
+
+        while (running) {
+            showDoctorMenu();
+            int choice = readMenuChoice();
+
+            switch (choice) {
+                case 1:
+                    viewOwnScheduleFlow();
+                    break;
+                case 2:
+                    markAppointmentCompletedFlow();
+                    break;
+                case 3:
+                    viewDoctorReportFlow();
+                    break;
+                case 4:
+                    running = false;
+                    System.out.println("Logged out successfully. Goodbye.");
+                    break;
+                default:
+                    System.out.println("Invalid menu option.");
+            }
+        }
+    }
+
+    private void showPatientMenu() {
+        System.out.println();
+        System.out.println("=======================================");
+        System.out.println("   HOSPITAL APPOINTMENT SYSTEM");
+        System.out.println("   Patient Portal - " + session.getUsername());
+        System.out.println("=======================================");
+        System.out.println("  1. Add Appointment");
+        System.out.println("  2. View My Appointments");
+        System.out.println("  3. Cancel My Appointment");
+        System.out.println("  4. View My History");
+        System.out.println("  5. Join Waitlist");
+        System.out.println("  6. Logout");
+        System.out.println("=======================================");
+    }
+
+    private void showDoctorMenu() {
+        System.out.println();
+        System.out.println("=======================================");
+        System.out.println("   HOSPITAL APPOINTMENT SYSTEM");
+        System.out.println("   Doctor Portal - " + session.getUsername());
+        System.out.println("=======================================");
+        System.out.println("  1. View My Schedule");
+        System.out.println("  2. Mark Appointment Completed");
+        System.out.println("  3. View My Report");
+        System.out.println("  4. Logout");
+        System.out.println("=======================================");
+    }
+
+    private void showAdminMenu() {
+        System.out.println();
+        System.out.println("=======================================");
+        System.out.println("   HOSPITAL APPOINTMENT SYSTEM");
+        System.out.println("   Admin Portal - " + session.getUsername());
+        System.out.println("=======================================");
+        System.out.println("  1. Add Appointment");
+        System.out.println("  2. View All Appointments");
+        System.out.println("  3. Cancel Appointment");
+        System.out.println("  4. Search Appointment");
+        System.out.println("  5. View Report Summary");
+        System.out.println("  6. Reschedule Appointment");
+        System.out.println("  7. Mark Appointment Completed");
+        System.out.println("  8. View Patient History");
+        System.out.println("  9. View Doctor Daily Schedule");
+        System.out.println(" 10. Join Waitlist");
+        System.out.println(" 11. View Waitlist");
+        System.out.println(" 12. Logout");
+        System.out.println("=======================================");
+    }
+
+    private void runAdminMenu() {
+        boolean running = true;
+
+        while (running) {
+            showAdminMenu();
+            int choice = readMenuChoice();
+
+            switch (choice) {
+                case 1:
+                    addAppointmentFlow();
+                    break;
+                case 2:
+                    viewAllAppointmentsFlow();
                     break;
                 case 3:
                     cancelAppointmentFlow();
@@ -68,7 +193,7 @@ public class MenuHandler {
                     break;
                 case 12:
                     running = false;
-                    System.out.println("Exiting system. Goodbye.");
+                    System.out.println("Logged out successfully. Goodbye.");
                     break;
                 default:
                     System.out.println("Invalid menu option.");
@@ -76,37 +201,144 @@ public class MenuHandler {
         }
     }
 
-    private void showMenu() {
-        System.out.println();
-        System.out.println("=======================================");
-        System.out.println("      HOSPITAL APPOINTMENT SYSTEM");
-        System.out.println("=======================================");
-        System.out.println("  1. Add Appointment");
-        System.out.println("  2. View Appointments");
-        System.out.println("  3. Cancel Appointment");
-        System.out.println("  4. Search Appointment");
-        System.out.println("  5. View Report Summary");
-        System.out.println("  6. Reschedule Appointment");
-        System.out.println("  7. Mark Appointment Completed");
-        System.out.println("  8. View Patient History");
-        System.out.println("  9. View Doctor Daily Schedule");
-        System.out.println(" 10. Join Waitlist");
-        System.out.println(" 11. View Waitlist");
-        System.out.println(" 12. Exit");
-        System.out.println("=======================================");
-    }
-
     private int readMenuChoice() {
         while (true) {
             try {
                 System.out.print("Select option: ");
                 String input = scanner.nextLine();
-                return InputValidator.parseMenuChoice(input, 1, 12);
+                if (session.isAdmin()) {
+                    return InputValidator.parseMenuChoice(input, 1, 12);
+                } else if (session.isPatient()) {
+                    return InputValidator.parseMenuChoice(input, 1, 6);
+                } else {
+                    return InputValidator.parseMenuChoice(input, 1, 4);
+                }
             } catch (IllegalArgumentException exception) {
                 System.out.println("Input error: " + exception.getMessage());
             }
         }
     }
+
+    // ========== PATIENT FLOWS ==========
+    
+    private void viewOwnAppointmentsFlow() {
+        System.out.println();
+        System.out.println("--- My Appointments ---");
+        
+        List<Appointment> allAppointments = appointmentManager.viewAppointments();
+        List<Appointment> ownAppointments = new java.util.ArrayList<Appointment>();
+        
+        // Filter appointments for current patient
+        String patientId = session.getLinkedPatientId();
+        for (Appointment apt : allAppointments) {
+            if (apt.getPatient().getPatientId().equalsIgnoreCase(patientId)) {
+                ownAppointments.add(apt);
+            }
+        }
+        
+        if (ownAppointments.isEmpty()) {
+            System.out.println("You have no appointments.");
+            return;
+        }
+        
+        printAppointmentHeader();
+        for (Appointment appointment : ownAppointments) {
+            printAppointmentRow(appointment);
+        }
+    }
+
+    private void cancelOwnAppointmentFlow() {
+        System.out.println();
+        System.out.println("--- Cancel My Appointment ---");
+
+        String appointmentId = readNonBlank("Enter Appointment ID: ");
+        
+        // Check if appointment belongs to current patient
+        Appointment appointment = findAppointmentById(appointmentId);
+        if (appointment == null) {
+            System.out.println("Appointment not found.");
+            return;
+        }
+        
+        if (!appointment.getPatient().getPatientId().equalsIgnoreCase(session.getLinkedPatientId())) {
+            System.out.println("You can only cancel your own appointments.");
+            return;
+        }
+        
+        boolean cancelled = appointmentManager.cancelAppointment(appointmentId);
+        if (cancelled) {
+            System.out.println("Appointment cancelled successfully.");
+        } else {
+            System.out.println("Appointment not found or already cancelled.");
+        }
+    }
+
+    // ========== DOCTOR FLOWS ==========
+    
+    private void viewOwnScheduleFlow() {
+        System.out.println();
+        System.out.println("--- My Schedule ---");
+
+        try {
+            LocalDate date = readDateAllowPast("Schedule date (yyyy-MM-dd): ");
+            String doctorId = session.getLinkedDoctorId();
+            List<Appointment> schedule = appointmentManager.getDoctorDailySchedule(doctorId, date);
+
+            if (schedule.isEmpty()) {
+                System.out.println("No schedule entries for this date.");
+                return;
+            }
+
+            printAppointmentHeader();
+            for (Appointment appointment : schedule) {
+                printAppointmentRow(appointment);
+            }
+            printStatusSummary(schedule);
+        } catch (Exception exception) {
+            System.out.println("Could not load schedule: " + exception.getMessage());
+        }
+    }
+
+    private void viewDoctorReportFlow() {
+        System.out.println();
+        System.out.println("--- My Report Summary ---");
+        
+        try {
+            String doctorId = session.getLinkedDoctorId();
+            List<Appointment> doctorAppointments = new java.util.ArrayList<Appointment>();
+            
+            // Filter appointments for current doctor only
+            for (Appointment apt : appointmentManager.viewAppointments()) {
+                if (apt.getDoctor().getDoctorId().equalsIgnoreCase(doctorId)) {
+                    doctorAppointments.add(apt);
+                }
+            }
+            
+            int total = doctorAppointments.size();
+            int booked = 0;
+            int cancelled = 0;
+            int completed = 0;
+
+            for (Appointment appointment : doctorAppointments) {
+                if (appointment.getStatus() == AppointmentStatus.BOOKED) {
+                    booked++;
+                } else if (appointment.getStatus() == AppointmentStatus.CANCELLED) {
+                    cancelled++;
+                } else if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
+                    completed++;
+                }
+            }
+
+            System.out.println("Your appointments: " + total);
+            System.out.println("Booked: " + booked);
+            System.out.println("Cancelled: " + cancelled);
+            System.out.println("Completed: " + completed);
+        } catch (Exception exception) {
+            System.out.println("Could not load report: " + exception.getMessage());
+        }
+    }
+
+    // ========== SHARED FLOWS ==========
 
     private void addAppointmentFlow() {
         try {
@@ -194,6 +426,22 @@ public class MenuHandler {
     }
 
     private void viewAppointmentsFlow() {
+        System.out.println();
+        System.out.println("--- All Appointments ---");
+        List<Appointment> appointments = appointmentManager.viewAppointments();
+
+        if (appointments.isEmpty()) {
+            System.out.println("No appointments found.");
+            return;
+        }
+
+        printAppointmentHeader();
+        for (Appointment appointment : appointments) {
+            printAppointmentRow(appointment);
+        }
+    }
+
+    private void viewAllAppointmentsFlow() {
         System.out.println();
         System.out.println("--- All Appointments ---");
         List<Appointment> appointments = appointmentManager.viewAppointments();

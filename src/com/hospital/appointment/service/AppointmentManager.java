@@ -30,17 +30,24 @@ public class AppointmentManager implements AppointmentService {
     private final List<LocalTime> timeSlots;
     private final FileHandler fileHandler;
     private final IdGenerator idGenerator;
+    private final AuthService authService;
 
     public AppointmentManager(FileHandler fileHandler) {
+        this(fileHandler, null);
+    }
+
+    public AppointmentManager(FileHandler fileHandler, AuthService authService) {
         this.appointments = new ArrayList<Appointment>();
         this.waitlistEntries = new ArrayList<WaitlistEntry>();
         this.doctors = new ArrayList<Doctor>();
         this.timeSlots = new ArrayList<LocalTime>();
         this.fileHandler = fileHandler;
         this.idGenerator = new IdGenerator();
+        this.authService = authService;
 
         initializeDoctors();
         initializeTimeSlots();
+        seedDoctorAccounts();
         loadExistingAppointments();
         loadExistingWaitlist();
         idGenerator.syncFromAppointments(appointments);
@@ -441,6 +448,44 @@ public class AppointmentManager implements AppointmentService {
         timeSlots.add(LocalTime.of(13, 0));
         timeSlots.add(LocalTime.of(14, 0));
         timeSlots.add(LocalTime.of(15, 0));
+    }
+
+    private void seedDoctorAccounts() {
+        if (authService == null) {
+            return;
+        }
+
+        // Seed admin account
+        if (!authService.userExists("admin")) {
+            try {
+                authService.registerUser(
+                        "admin",
+                        "admin123",
+                        "ADMIN",
+                        "",
+                        ""
+                );
+            } catch (Exception e) {
+                System.out.println("Warning: could not seed admin account: " + e.getMessage());
+            }
+        }
+
+        for (Doctor doctor : doctors) {
+            String username = "doc_" + doctor.getDoctorId().toLowerCase();
+            if (!authService.userExists(username)) {
+                try {
+                    authService.registerUser(
+                            username,
+                            "doctor123", // default password, should be changed on first login
+                            "DOCTOR",
+                            "",
+                            doctor.getDoctorId()
+                    );
+                } catch (Exception e) {
+                    System.out.println("Warning: could not seed doctor account for " + doctor.getDoctorId() + ": " + e.getMessage());
+                }
+            }
+        }
     }
 
     private void loadExistingAppointments() {

@@ -204,6 +204,110 @@ public class FileHandler {
         return loaded;
     }
 
+    public java.util.Map<String, Object> loadUsers() throws IOException {
+        Path usersFilePath = Paths.get(getUsersPath());
+
+        java.util.Map<String, Object> result = new java.util.HashMap<String, Object>();
+        java.util.List<com.hospital.appointment.model.UserAccount> users = new ArrayList<com.hospital.appointment.model.UserAccount>();
+        java.util.Map<String, String> hashes = new java.util.HashMap<String, String>();
+
+        if (!Files.exists(usersFilePath)) {
+            if (usersFilePath.getParent() != null) {
+                Files.createDirectories(usersFilePath.getParent());
+            }
+            Files.createFile(usersFilePath);
+            result.put("users", users);
+            result.put("hashes", hashes);
+            return result;
+        }
+
+        java.util.List<String> lines = Files.readAllLines(usersFilePath, StandardCharsets.UTF_8);
+
+        for (String rawLine : lines) {
+            if (rawLine == null || rawLine.trim().isEmpty()) {
+                continue;
+            }
+
+            String[] parts = rawLine.split("\\|");
+            if (parts.length < 7) {
+                continue;
+            }
+
+            try {
+                String userId = parts[0].trim();
+                String username = parts[1].trim();
+                String passwordHash = parts[2].trim();
+                String roleText = parts[3].trim();
+                String linkedPatientId = parts[4].trim();
+                String linkedDoctorId = parts[5].trim();
+                String activeText = parts[6].trim();
+                String createdAtText = parts[7].trim();
+
+                com.hospital.appointment.enums.UserRole role = com.hospital.appointment.enums.UserRole.fromText(roleText);
+                LocalDateTime createdAt = LocalDateTime.parse(createdAtText);
+                boolean active = Boolean.parseBoolean(activeText);
+
+                com.hospital.appointment.model.UserAccount account = new com.hospital.appointment.model.UserAccount(
+                        userId,
+                        username,
+                        passwordHash,
+                        role,
+                        linkedPatientId,
+                        linkedDoctorId,
+                        createdAt
+                );
+                account.setActive(active);
+
+                users.add(account);
+                hashes.put(username.toLowerCase(), passwordHash);
+            } catch (Exception e) {
+                System.out.println("Warning: skipping malformed user line: " + e.getMessage());
+            }
+        }
+
+        result.put("users", users);
+        result.put("hashes", hashes);
+        return result;
+    }
+
+    public void saveUsers(java.util.List<com.hospital.appointment.model.UserAccount> users, 
+                         java.util.Map<String, String> hashes) throws IOException {
+        Path usersFilePath = Paths.get(getUsersPath());
+        java.util.List<String> lines = new ArrayList<String>();
+
+        for (com.hospital.appointment.model.UserAccount user : users) {
+            String line = String.join("|",
+                    user.getUserId(),
+                    user.getUsername(),
+                    user.getPasswordHash(),
+                    user.getRole().name(),
+                    user.getLinkedPatientId(),
+                    user.getLinkedDoctorId(),
+                    String.valueOf(user.isActive()),
+                    user.getCreatedAt().toString()
+            );
+            lines.add(line);
+        }
+
+        if (usersFilePath.getParent() != null) {
+            Files.createDirectories(usersFilePath.getParent());
+        }
+
+        Files.write(usersFilePath, lines, StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE);
+    }
+
+    private String getUsersPath() {
+        Path appointment = appointmentFilePath;
+        Path parent = appointment.getParent();
+        if (parent == null) {
+            return "data/users.txt";
+        }
+        return parent.resolve("users.txt").toString();
+    }
+
     private static String deriveWaitlistPath(String appointmentPath) {
         Path appointment = Paths.get(appointmentPath);
         Path parent = appointment.getParent();
