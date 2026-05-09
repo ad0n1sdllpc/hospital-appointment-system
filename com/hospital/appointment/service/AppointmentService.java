@@ -1,0 +1,743 @@
+package com.hospital.appointment.service;
+
+import com.hospital.appointment.enums.*;
+import com.hospital.appointment.model.*;
+import com.hospital.appointment.storage.DataStore;
+import com.hospital.appointment.ui.Console;
+import com.hospital.appointment.util.*;
+
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.Objects;
+
+/**
+ * Shared appointment business logic used by all three dashboards.
+ *
+ * This is NOT a dashboard itself — it's a reusable service layer.
+ * Dashboards call these methods and pass context (e.g., which patient).
+ */
+public class AppointmentService {
+
+    // ── Time slots available in a day ────────────────────────────────────────
+    public static final List<String> DEFAULT_SLOTS = Arrays.asList(
+        "08:00","09:00","10:00","11:00","13:00","14:00","15:00","16:00","17:00"
+    );
+
+    private static final int WAITLIST_MAX = 5;
+
+    private final DataStore      store;
+    private final InputValidator input;
+
+    public AppointmentService(DataStore store, InputValidator input) {
+        this.store = store;
+        this.input = input;
+    }
+
+    // =========================================================================
+    // BOOKING
+    // =========================================================================
+
+    /**
+     * Full booking flow — used by both Admin and Patient dashboards.
+     *
+     * @param preselectedPatient  null = admin mode (admin picks patient);
+     *                            non-null = patient mode (patient books for themselves)
+     */
+    public void bookAppointment(Patient preselectedPatient) {
+        Console.header("BOOK NEW APPOINTMENT");
+
+        // ── 1. Resolve patient ────────────────────────────────────────────────
+        Patient patient;
+        if (preselectedPatient != null) {
+            patient = preselectedPatient;
+            Console.fieldLine("  Booking for", patient.getName() + " [" + patient.getPatientId() + "]");
+        } else {
+            // Admin mode: pick or create patient
+            patient = adminPickOrCreatePatient();
+            if (patient == null) return;
+        }
+
+        // ── 2. Select doctor ──────────────────────────────────────────────────
+        Console.section("Select Doctor");
+        Doctor doctor = promptDoctorSelect();
+        if (doctor == null) return;
+
+        // ── 3. Select date ────────────────────────────────────────────────────
+        Console.section("Date & Time");
+        String date = input.readFutureDate("  Preferred Date (yyyy-MM-dd) : ");
+
+        // ── 4. Select time slot ───────────────────────────────────────────────
+        String slot = promptSlotSelect(doctor, date);
+        if (slot == null) {
+            offerWaitlist(patient, doctor, date);
+            return;
+        }
+
+        // ── 5. Notes ─────────────────────────────────────────────────────────
+        String notes = input.readOptional("  Reason / Notes (optional)  : ");
+
+        // ── 6. Confirm ────────────────────────────────────────────────────────
+        Console.confirmBox(patient.getName(), doctor.getName(),
+            doctor.getDepartment().getDisplayName(), date, slot);
+
+        if (!input.readYesNo("  Confirm booking? (y/n) : ")) {
+            Console.info("Booking cancelled.");
+            return;
+        }
+
+        // ── 7. Persist ────────────────────────────────────────────────────────
+        String ts   = DateUtils.now();
+        String id   = store.ids.nextAppointmentId();
+
+        Appointment appt = new Appointment(id, patient.getPatientId(),
+            doctor.getDoctorId(), date, slot, AppointmentStatus.BOOKED, notes, ts);
+        appt.resolve(patient, doctor);
+
+        store.appointments.add(appt);
+        store.saveAppointments();
+
+        Console.success("Appointment booked successfully!");
+        Console.fieldLine("  Appointment ID", id);
+        Console.fieldLine("  Patient       ", patient.getName());
+        Console.fieldLine("  Doctor        ", "Dr. " + doctor.getName());
+        Console.fieldLine("  Date & Time   ", DateUtils.pretty(date) + " at " + slot);
+    }
+
+    // =========================================================================
+    // VIEW LISTS
+    // =========================================================================
+
+    /** Display all appointments (admin view). */
+    public void viewAllAppointments() {
+        Console.header("ALL APPOINTMENTS");
+        List<Appointment> list = store.appointments;
+        if (list.isEmpty()) { Console.info("No appointments on record."); return; }
+        printTable(list, true);
+    }
+
+    /** Display appointments for a specific patient. */
+    public void viewPatientAppointments(String patientId, boolean upcomingOnly) {
+        String title = upcomingOnly ? "MY UPCOMING APPOINTMENTS" : "MY APPOINTMENT HISTORY";
+        Console.header(title);
+
+        List<Appointment> list = store.appointments.stream()
+            .filter(a -> a.getPatientId().equals(patientId))
+            .filter(a -> !upcomingOnly || a.getStatus() == AppointmentStatus.BOOKED)
+            .collect(Collectors.toList());
+
+        if (list.isEmpty()) { Console.info("No appointments found."); return; }
+        printTable(list, true);
+    }
+
+    /** Display appointments for a specific doctor, optionally filtered to today. */
+    public void viewDoctorAppointments(String doctorId, boolean todayOnly) {
+        String title = todayOnly ? "TODAY'S APPOINTMENTS" : "MY FULL SCHEDULE";
+        Console.header(title);
+
+        String today = DateUtils.today();
+        List<Appointment> list = store.appointments.stream()
+            .filter(a -> a.getDoctorId().equals(doctorId))
+            .filter(a -> !todayOnly || a.getDate().equals(today))
+            .filter(a -> a.getStatus() == AppointmentStatus.BOOKED
+                      || a.getStatus() == AppointmentStatus.COMPLETED)
+            .sorted(Comparator.comparing(Appointment::getDate)
+                .thenComparing(Appointment::getTimeSlot))
+            .collect(Collectors.toList());
+
+        if (list.isEmpty()) { Console.info("No appointments found."); return; }
+        printTable(list, true);
+    }
+
+    // =========================================================================
+    // DETAIL VIEW
+    // =========================================================================
+
+    public void viewDetail() {
+        Console.header("APPOINTMENT DETAIL");
+        String id = input.readString("  Appointment ID : ").toUpperCase();
+        Appointment a = store.findAppointmentById(id);
+        if (a == null) { Console.error("Not found: " + id); return; }
+        System.out.println(a.toDetailBlock());
+    }
+
+    /** Detail view restricted to a specific patient (patient self-service). */
+    public void viewDetailForPatient(String patientId) {
+        Console.header("APPOINTMENT DETAIL");
+        String id = input.readString("  Appointment ID : ").toUpperCase();
+        Appointment a = store.findAppointmentById(id);
+        if (a == null) { Console.error("Not found: " + id); return; }
+        if (!a.getPatientId().equals(patientId)) {
+            Console.error("You can only view your own appointments.");
+            return;
+        }
+        System.out.println(a.toDetailBlock());
+    }
+
+    // =========================================================================
+    // STATUS CHANGES
+    // =========================================================================
+
+    /** Cancel — usable by Admin or Patient (patient mode enforces ownership). */
+    public void cancelAppointment(String ownerPatientId) {
+        Console.header("CANCEL APPOINTMENT");
+
+        String id = input.readString("  Appointment ID to cancel : ").toUpperCase();
+        Appointment appt = store.findAppointmentById(id);
+        if (appt == null) { Console.error("Not found: " + id); return; }
+
+        // Ownership check for patient-role cancellation
+        if (ownerPatientId != null && !appt.getPatientId().equals(ownerPatientId)) {
+            Console.error("You can only cancel your own appointments.");
+            return;
+        }
+        if (appt.getStatus() == AppointmentStatus.CANCELLED)  { Console.warn("Already cancelled."); return; }
+        if (appt.getStatus() == AppointmentStatus.COMPLETED)  { Console.warn("Cannot cancel a completed appointment."); return; }
+
+        System.out.printf("  Patient : %s%n", appt.getPatient() != null ? appt.getPatient().getName() : appt.getPatientId());
+        System.out.printf("  Doctor  : Dr. %s%n", appt.getDoctor() != null ? appt.getDoctor().getName() : appt.getDoctorId());
+        System.out.printf("  Date    : %s at %s%n", appt.getDate(), appt.getTimeSlot());
+
+        if (!input.readYesNo("\n  Confirm cancellation? (y/n) : ")) { Console.info("Cancelled."); return; }
+
+        appt.setStatus(AppointmentStatus.CANCELLED);
+        store.saveAppointments();
+        Console.success("Appointment " + id + " has been cancelled.");
+
+        // Try to auto-promote a waitlisted patient
+        autoPromote(appt.getDoctorId(), appt.getDate(), appt.getTimeSlot());
+    }
+
+    /** Mark appointment COMPLETED — Doctor or Admin. */
+    public void completeAppointment(String ownerDoctorId) {
+        Console.header("MARK AS COMPLETED");
+
+        String id = input.readString("  Appointment ID : ").toUpperCase();
+        Appointment appt = store.findAppointmentById(id);
+        if (appt == null)                                          { Console.error("Not found: " + id); return; }
+        if (ownerDoctorId != null && !appt.getDoctorId().equals(ownerDoctorId)) {
+            Console.error("You can only complete your own appointments.");
+            return;
+        }
+        if (appt.getStatus() != AppointmentStatus.BOOKED) { Console.warn("Only BOOKED appointments can be completed."); return; }
+
+        appt.setStatus(AppointmentStatus.COMPLETED);
+        store.saveAppointments();
+        Console.success("Appointment " + id + " marked as COMPLETED.");
+    }
+
+    /** Reschedule — Admin only. */
+    public void rescheduleAppointment() {
+        Console.header("RESCHEDULE APPOINTMENT");
+
+        String id = input.readString("  Appointment ID : ").toUpperCase();
+        Appointment appt = store.findAppointmentById(id);
+        if (appt == null)                                      { Console.error("Not found: " + id); return; }
+        if (appt.getStatus() != AppointmentStatus.BOOKED)     { Console.warn("Only BOOKED appointments can be rescheduled."); return; }
+
+        System.out.printf("  Current: %s at %s with Dr. %s%n",
+            appt.getDate(), appt.getTimeSlot(),
+            appt.getDoctor() != null ? appt.getDoctor().getName() : appt.getDoctorId());
+
+        Doctor newDoctor = appt.getDoctor();
+        if (input.readYesNo("  Change doctor? (y/n) : ")) {
+            newDoctor = promptDoctorSelect();
+            if (newDoctor == null) return;
+        }
+
+        String newDate = input.readFutureDate("  New Date (yyyy-MM-dd)        : ");
+        String newSlot = promptSlotSelect(newDoctor, newDate);
+        if (newSlot == null) { Console.warn("No available slots. Reschedule aborted."); return; }
+
+        appt.setDoctorId(newDoctor.getDoctorId());
+        appt.setDoctor(newDoctor);
+        appt.setDate(newDate);
+        appt.setTimeSlot(newSlot);
+
+        store.saveAppointments();
+        Console.success("Rescheduled to " + DateUtils.pretty(newDate) + " at " + newSlot);
+    }
+
+    // =========================================================================
+    // SEARCH & FILTER
+    // =========================================================================
+
+    public void searchAll() {
+        Console.header("SEARCH ALL RECORDS");
+        System.out.println("  [1] Patient Name");
+        System.out.println("  [2] Patient ID");
+        System.out.println("  [3] Date");
+        System.out.println("  [4] Doctor Name");
+        System.out.println("  [5] Appointment ID");
+
+        int choice = input.readIntInRange("\n  Search by : ", 1, 5);
+        String kw  = (choice == 3)
+            ? input.readAnyDate("  Date (yyyy-MM-dd) : ")
+            : input.readString ("  Keyword           : ").toLowerCase();
+
+        List<Appointment> results = switch (choice) {
+            case 1 -> filterWith(a -> a.getPatient() != null && a.getPatient().getName().toLowerCase().contains(kw));
+            case 2 -> filterWith(a -> a.getPatientId().toLowerCase().contains(kw));
+            case 3 -> filterWith(a -> a.getDate().equals(kw));
+            case 4 -> filterWith(a -> a.getDoctor() != null && a.getDoctor().getName().toLowerCase().contains(kw));
+            case 5 -> filterWith(a -> a.getAppointmentId().toLowerCase().contains(kw));
+            default -> Collections.emptyList();
+        };
+
+        System.out.printf("%n  Found %d result(s):%n%n", results.size());
+        if (results.isEmpty()) Console.info("No matches.");
+        else printTable(results, true);
+    }
+
+    public void filterByStatus() {
+        Console.header("FILTER BY STATUS");
+        AppointmentStatus[] statuses = AppointmentStatus.values();
+        for (int i = 0; i < statuses.length; i++)
+            System.out.printf("  [%d] %s%n", i + 1, statuses[i].getDisplayName());
+        int choice = input.readIntInRange("\n  Select : ", 1, statuses.length);
+        AppointmentStatus target = statuses[choice - 1];
+        List<Appointment> list = filterWith(a -> a.getStatus() == target);
+        Console.section(target.getDisplayName() + " (" + list.size() + ")");
+        if (list.isEmpty()) Console.info("None found."); else printTable(list, false);
+    }
+
+    public void filterByDepartment() {
+        Console.header("FILTER BY DEPARTMENT");
+        Department[] depts = Department.values();
+        for (int i = 0; i < depts.length; i++)
+            System.out.printf("  [%2d] %-14s %s%n", i + 1, depts[i].getTag(), depts[i].getDisplayName());
+        int choice = input.readIntInRange("\n  Select : ", 1, depts.length);
+        Department target = depts[choice - 1];
+        List<Appointment> list = filterWith(a -> a.getDoctor() != null
+            && a.getDoctor().getDepartment() == target);
+        Console.section(target.getDisplayName() + " (" + list.size() + ")");
+        if (list.isEmpty()) Console.info("None found."); else printTable(list, false);
+    }
+
+    // =========================================================================
+    // WAITLIST
+    // =========================================================================
+
+    public void viewWaitlist() {
+        Console.header("WAITLIST");
+        List<WaitlistEntry> active = store.waitlist.stream()
+            .filter(w -> w.getStatus() == WaitlistStatus.WAITING)
+            .sorted(Comparator.comparingInt(WaitlistEntry::getQueuePosition))
+            .collect(Collectors.toList());
+
+        if (active.isEmpty()) { Console.info("Waitlist is empty."); return; }
+
+        Console.waitlistTableHeader();
+        for (WaitlistEntry e : active) System.out.println(e.toTableRow());
+        System.out.println("  " + "-".repeat(70));
+        System.out.printf("  Total waiting: %d%n", active.size());
+    }
+
+    public void joinWaitlist(Patient patient) {
+        Console.header("JOIN WAITLIST");
+
+        Doctor doctor = promptDoctorSelect();
+        if (doctor == null) return;
+
+        String date  = input.readFutureDate("  Preferred Date (yyyy-MM-dd) : ");
+        String notes = input.readOptional  ("  Notes (optional)            : ");
+
+        long count = store.waitlist.stream()
+            .filter(w -> w.getDoctorId().equals(doctor.getDoctorId())
+                      && w.getPreferredDate().equals(date)
+                      && w.getStatus() == WaitlistStatus.WAITING)
+            .count();
+
+        if (count >= WAITLIST_MAX) {
+            Console.error("Waitlist full for Dr. " + doctor.getName() + " on " + date + ".");
+            return;
+        }
+
+        String id = store.ids.nextWaitlistId();
+        WaitlistEntry entry = new WaitlistEntry(id, patient.getPatientId(),
+            doctor.getDoctorId(), date, WaitlistStatus.WAITING,
+            DateUtils.now(), (int) count + 1, notes);
+        entry.resolve(patient, doctor);
+
+        store.waitlist.add(entry);
+        store.saveWaitlist();
+        Console.success("Added to waitlist as position #" + entry.getQueuePosition());
+        Console.fieldLine("  Waitlist ID", id);
+    }
+
+    public void removeFromWaitlist() {
+        Console.header("REMOVE FROM WAITLIST");
+        String id = input.readString("  Waitlist ID : ").toUpperCase();
+        WaitlistEntry entry = store.waitlist.stream()
+            .filter(w -> w.getWaitlistId().equalsIgnoreCase(id))
+            .findFirst().orElse(null);
+
+        if (entry == null)                                  { Console.error("Not found: " + id); return; }
+        if (entry.getStatus() != WaitlistStatus.WAITING)   { Console.warn("Not in WAITING status."); return; }
+        if (!input.readYesNo("  Remove this entry? (y/n) : ")) { Console.info("Cancelled."); return; }
+
+        entry.setStatus(WaitlistStatus.REMOVED);
+        store.saveWaitlist();
+        Console.success("Waitlist entry " + id + " removed.");
+    }
+
+    // =========================================================================
+    // DOCTOR SCHEDULE VIEW
+    // =========================================================================
+
+    public void viewDoctorSchedule() {
+        Console.header("DOCTOR SCHEDULE");
+        Doctor doctor = promptDoctorSelect();
+        if (doctor == null) return;
+        String date = input.readAnyDate("  Date (yyyy-MM-dd) : ");
+        printDoctorDayView(doctor, date);
+    }
+
+    public void viewMySchedule(Doctor doctor) {
+        Console.header("MY SCHEDULE");
+        String date = input.readAnyDate("  Date to view (yyyy-MM-dd) : ");
+        printDoctorDayView(doctor, date);
+    }
+
+    private void printDoctorDayView(Doctor doctor, String date) {
+        Map<String, Appointment> slotMap = new LinkedHashMap<>();
+        for (String s : DEFAULT_SLOTS) slotMap.put(s, null);
+
+        for (Appointment a : store.appointments) {
+            if (a.getDoctorId().equals(doctor.getDoctorId())
+                && a.getDate().equals(date)
+                && a.getStatus() != AppointmentStatus.CANCELLED) {
+                slotMap.put(a.getTimeSlot(), a);
+            }
+        }
+
+        System.out.println();
+        System.out.printf("  Dr. %-20s | %s%n", doctor.getName(), DateUtils.pretty(date));
+        System.out.println("  " + "-".repeat(60));
+        System.out.printf("  %-8s  %-10s  %-24s  %s%n", "Time", "Status", "Patient", "Appt ID");
+        System.out.println("  " + "-".repeat(60));
+
+        for (Map.Entry<String, Appointment> e : slotMap.entrySet()) {
+            if (e.getValue() == null) {
+                System.out.printf("  %-8s  %-10s  %s%n", e.getKey(), "[  FREE  ]", "--");
+            } else {
+                Appointment a = e.getValue();
+                String pat = (a.getPatient() != null) ? a.getPatient().getName() : a.getPatientId();
+                System.out.printf("  %-8s  %-10s  %-24s  %s%n",
+                    e.getKey(), "[ BOOKED ]", pat, a.getAppointmentId());
+            }
+        }
+
+        long wl = store.waitlist.stream()
+            .filter(w -> w.getDoctorId().equals(doctor.getDoctorId())
+                      && w.getPreferredDate().equals(date)
+                      && w.getStatus() == WaitlistStatus.WAITING)
+            .count();
+        System.out.println("  " + "-".repeat(60));
+        System.out.printf("  Waitlisted: %d patient(s)%n", wl);
+    }
+
+    // =========================================================================
+    // REPORT
+    // =========================================================================
+
+    public void viewReport() {
+        Console.header("REPORT SUMMARY");
+
+        long total     = store.appointments.size();
+        long booked    = countStatus(AppointmentStatus.BOOKED);
+        long cancelled = countStatus(AppointmentStatus.CANCELLED);
+        long completed = countStatus(AppointmentStatus.COMPLETED);
+        long noShow    = countStatus(AppointmentStatus.NO_SHOW);
+        long waiting   = store.waitlist.stream()
+            .filter(w -> w.getStatus() == WaitlistStatus.WAITING).count();
+
+        System.out.println("  +" + "=".repeat(48) + "+");
+        System.out.println("  |" + Console.center("APPOINTMENT STATISTICS", 48) + "|");
+        System.out.println("  +" + "-".repeat(48) + "+");
+        System.out.printf ("  |  %-32s %12d  |%n", "Total Appointments",   total);
+        System.out.println("  +" + "-".repeat(48) + "+");
+        System.out.printf ("  |  %-32s %12d  |%n", "[*] Booked",    booked);
+        System.out.printf ("  |  %-32s %12d  |%n", "[v] Completed", completed);
+        System.out.printf ("  |  %-32s %12d  |%n", "[X] Cancelled", cancelled);
+        System.out.printf ("  |  %-32s %12d  |%n", "[-] No Show",   noShow);
+        System.out.printf ("  |  %-32s %12d  |%n", "[o] Waitlisted",waiting);
+        System.out.println("  +" + "=".repeat(48) + "+");
+
+        if (total == 0) return;
+
+        // Per-department table
+        System.out.println();
+        System.out.println("  DEPARTMENT BREAKDOWN:");
+        System.out.println("  " + "-".repeat(52));
+        System.out.printf ("  %-30s  %8s  %8s%n", "Department", "Count", "Share");
+        System.out.println("  " + "-".repeat(52));
+
+        store.appointments.stream()
+            .collect(Collectors.groupingBy(
+                a -> a.getDoctor() != null
+                    ? a.getDoctor().getDepartment().getDisplayName() : "Unknown",
+                Collectors.counting()))
+            .entrySet().stream()
+            .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+            .forEach(e -> {
+                double pct = (e.getValue() * 100.0) / total;
+                System.out.printf("  %-30s  %8d  %7.1f%%%n", e.getKey(), e.getValue(), pct);
+            });
+
+        // Top 5 busiest dates
+        System.out.println();
+        System.out.println("  TOP 5 BUSIEST DATES:");
+        System.out.println("  " + "-".repeat(40));
+        store.appointments.stream()
+            .filter(a -> a.getStatus() != AppointmentStatus.CANCELLED)
+            .collect(Collectors.groupingBy(Appointment::getDate, Collectors.counting()))
+            .entrySet().stream()
+            .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+            .limit(5)
+            .forEach(e -> System.out.printf("  %-14s  %d appointment(s)%n",
+                DateUtils.pretty(e.getKey()), e.getValue()));
+    }
+
+    // =========================================================================
+    // DOCTOR SLOT MANAGEMENT
+    // =========================================================================
+
+    public void setDoctorSlots(Doctor doctor) {
+        Console.header("SET AVAILABLE TIME SLOTS");
+
+        System.out.println("  Current slots: " + doctor.getAvailableSlots());
+        System.out.println();
+        System.out.println("  Default system slots:");
+        for (int i = 0; i < DEFAULT_SLOTS.size(); i++)
+            System.out.printf("  [%d] %s%n", i + 1, DEFAULT_SLOTS.get(i));
+
+        System.out.println();
+        System.out.println("  Enter the slot numbers you want to be available,");
+        System.out.println("  separated by commas (e.g. 1,2,3,5) or press Enter for all:");
+        String raw = input.readOptional("  > ");
+
+        if (raw.isEmpty()) {
+            doctor.setAvailableSlots("DEFAULT");
+        } else {
+            StringBuilder sb = new StringBuilder();
+            for (String tok : raw.split(",")) {
+                try {
+                    int idx = Integer.parseInt(tok.trim()) - 1;
+                    if (idx >= 0 && idx < DEFAULT_SLOTS.size()) {
+                        if (sb.length() > 0) sb.append(",");
+                        sb.append(DEFAULT_SLOTS.get(idx));
+                    }
+                } catch (NumberFormatException ignored) {}
+            }
+            doctor.setAvailableSlots(sb.length() > 0 ? sb.toString() : "DEFAULT");
+        }
+
+        store.saveDoctors();
+        Console.success("Available slots updated: " + doctor.getAvailableSlots());
+    }
+
+    // =========================================================================
+    // PATIENT RECORD VIEW (Doctor sees their patient's info)
+    // =========================================================================
+
+    public void viewPatientRecord(String doctorId) {
+        Console.header("PATIENT RECORD LOOKUP");
+        String pid = input.readString("  Patient ID or Name keyword : ").toLowerCase();
+
+        // Find patients who have appointments with this doctor
+        List<Patient> related = store.appointments.stream()
+            .filter(a -> a.getDoctorId().equals(doctorId)
+                && a.getStatus() != AppointmentStatus.CANCELLED)
+            .map(a -> store.patients.get(a.getPatientId()))
+            .filter(Objects::nonNull)
+            .filter(p -> p.getPatientId().toLowerCase().contains(pid)
+                      || p.getName().toLowerCase().contains(pid))
+            .distinct()
+            .collect(Collectors.toList());
+
+        if (related.isEmpty()) { Console.info("No matching patients found in your records."); return; }
+
+        for (Patient p : related) {
+            System.out.println();
+            System.out.println("  " + "-".repeat(50));
+            Console.fieldLine("  Patient ID",        p.getPatientId());
+            Console.fieldLine("  Name",              p.getName());
+            Console.fieldLine("  Age",               String.valueOf(p.getAge()));
+            Console.fieldLine("  Address",           p.getAddress());
+            Console.fieldLine("  Contact",           p.getContactNumber());
+            Console.fieldLine("  Blood Type",        p.getBloodType().isEmpty() ? "N/A" : p.getBloodType());
+            Console.fieldLine("  Emergency Contact", p.getEmergencyContact());
+
+            // Show their appointment history with this doctor
+            System.out.println();
+            System.out.println("    Appointment history with you:");
+            store.appointments.stream()
+                .filter(a -> a.getPatientId().equals(p.getPatientId())
+                          && a.getDoctorId().equals(doctorId))
+                .forEach(a -> System.out.printf("    - %s | %s %s | %s%n",
+                    a.getAppointmentId(), a.getDate(), a.getTimeSlot(),
+                    a.getStatus().getDisplayName()));
+        }
+    }
+
+    // =========================================================================
+    // PRIVATE HELPERS
+    // =========================================================================
+
+    /** Doctor selection list prompt. Returns null on cancel. */
+    public Doctor promptDoctorSelect() {
+        List<Doctor> docs = new ArrayList<>(store.doctors.values());
+        System.out.println();
+        System.out.printf("  %-4s %-6s %-22s %-28s %-12s %s%n",
+            "#", "ID", "Name", "Department", "Schedule", "Exp");
+        System.out.println("  " + "-".repeat(86));
+        for (int i = 0; i < docs.size(); i++)
+            System.out.println(docs.get(i).toListEntry(i + 1));
+        System.out.println("  " + "-".repeat(86));
+        System.out.println("   0 | Cancel");
+
+        int choice = input.readIntInRange("\n  Select doctor : ", 0, docs.size());
+        if (choice == 0) { Console.info("Cancelled."); return null; }
+        return docs.get(choice - 1);
+    }
+
+    /** Time slot selection. Returns null when no slots free or user cancels. */
+    private String promptSlotSelect(Doctor doctor, String date) {
+        // Get doctor's configured slots
+        List<String> allSlots = ("DEFAULT".equals(doctor.getAvailableSlots()))
+            ? DEFAULT_SLOTS
+            : Arrays.asList(doctor.getAvailableSlots().split(","));
+
+        Set<String> taken = store.appointments.stream()
+            .filter(a -> a.getDoctorId().equals(doctor.getDoctorId())
+                      && a.getDate().equals(date)
+                      && a.getStatus() != AppointmentStatus.CANCELLED)
+            .map(Appointment::getTimeSlot)
+            .collect(Collectors.toSet());
+
+        List<String> free = allSlots.stream()
+            .filter(s -> !taken.contains(s))
+            .collect(Collectors.toList());
+
+        if (free.isEmpty()) return null;
+
+        System.out.printf("%n  Available slots — Dr. %s on %s:%n",
+            doctor.getName(), DateUtils.pretty(date));
+        System.out.println("  " + "-".repeat(34));
+        for (int i = 0; i < free.size(); i++)
+            System.out.printf("  [%d] %s%n", i + 1, free.get(i));
+        System.out.println("  [0] Cancel / Join Waitlist");
+        System.out.println("  " + "-".repeat(34));
+
+        int choice = input.readIntInRange("\n  Select slot : ", 0, free.size());
+        if (choice == 0) { Console.info("No slot selected."); return null; }
+        return free.get(choice - 1);
+    }
+
+    /** When slots are full, offer the patient the waitlist. */
+    private void offerWaitlist(Patient patient, Doctor doctor, String date) {
+        Console.warn("No available slots for Dr. " + doctor.getName() + " on " +
+            DateUtils.pretty(date) + ".");
+        if (input.readYesNo("  Join the waitlist for this doctor/date? (y/n) : ")) {
+            joinWaitlistDirect(patient, doctor, date);
+        } else {
+            Console.info("Booking cancelled.");
+        }
+    }
+
+    private void joinWaitlistDirect(Patient patient, Doctor doctor, String date) {
+        long count = store.waitlist.stream()
+            .filter(w -> w.getDoctorId().equals(doctor.getDoctorId())
+                      && w.getPreferredDate().equals(date)
+                      && w.getStatus() == WaitlistStatus.WAITING)
+            .count();
+        if (count >= WAITLIST_MAX) { Console.error("Waitlist is also full."); return; }
+
+        String notes = input.readOptional("  Notes (optional) : ");
+        String id    = store.ids.nextWaitlistId();
+        WaitlistEntry e = new WaitlistEntry(id, patient.getPatientId(),
+            doctor.getDoctorId(), date, WaitlistStatus.WAITING,
+            DateUtils.now(), (int) count + 1, notes);
+        e.resolve(patient, doctor);
+
+        store.waitlist.add(e);
+        store.saveWaitlist();
+        Console.success("Added to waitlist at position #" + e.getQueuePosition() + ". ID: " + id);
+    }
+
+    /** Auto-promote top waitlist entry when a slot is freed. */
+    private void autoPromote(String doctorId, String date, String freedSlot) {
+        WaitlistEntry next = store.waitlist.stream()
+            .filter(w -> w.getDoctorId().equals(doctorId)
+                      && w.getPreferredDate().equals(date)
+                      && w.getStatus() == WaitlistStatus.WAITING)
+            .min(Comparator.comparingInt(WaitlistEntry::getQueuePosition))
+            .orElse(null);
+        if (next == null) return;
+
+        Doctor  doc = store.doctors.get(doctorId);
+        Patient pat = store.patients.get(next.getPatientId());
+
+        String id   = store.ids.nextAppointmentId();
+        Appointment promoted = new Appointment(id, next.getPatientId(), doctorId,
+            date, freedSlot, AppointmentStatus.BOOKED,
+            "Auto-promoted from waitlist " + next.getWaitlistId(), DateUtils.now());
+        promoted.resolve(pat, doc);
+
+        store.appointments.add(promoted);
+        next.setStatus(WaitlistStatus.PROMOTED);
+        store.saveAppointments();
+        store.saveWaitlist();
+
+        Console.success("Waitlisted patient auto-promoted: " +
+            (pat != null ? pat.getName() : next.getPatientId()));
+        Console.fieldLine("  New Appointment ID", id);
+    }
+
+    /** Admin picks an existing patient or creates a new walk-in profile. */
+    private Patient adminPickOrCreatePatient() {
+        System.out.println("  [1] Existing patient (by ID)");
+        System.out.println("  [2] New walk-in patient");
+        int choice = input.readIntInRange("\n  Choice : ", 1, 2);
+
+        if (choice == 1) {
+            String pid = input.readString("  Patient ID : ").toUpperCase();
+            Patient p  = store.patients.get(pid);
+            if (p == null) { Console.error("Patient not found: " + pid); return null; }
+            return p;
+        }
+
+        // Create walk-in
+        Console.section("New Walk-in Patient");
+        String name      = input.readString("  Full Name          : ");
+        int    age       = input.readPositiveInt("  Age               : ");
+        String address   = input.readString("  Address            : ");
+        String contact   = input.readContact("  Contact Number     : ");
+        String email     = input.readEmail  ("  Email (optional)   : ");
+        String blood     = input.readBloodType("  Blood Type (opt)   : ");
+        String emergency = input.readString("  Emergency Contact  : ");
+
+        String pid = store.ids.nextPatientId();
+        Patient p  = new Patient(pid, "", name, age, address, contact, email, blood, emergency, DateUtils.now());
+        store.patients.put(pid, p);
+        store.savePatients();
+        Console.success("Walk-in patient created: " + pid);
+        return p;
+    }
+
+    // ── Stream helpers ────────────────────────────────────────────────────────
+
+    private List<Appointment> filterWith(java.util.function.Predicate<Appointment> pred) {
+        return store.appointments.stream().filter(pred).collect(Collectors.toList());
+    }
+
+    private long countStatus(AppointmentStatus status) {
+        return store.appointments.stream().filter(a -> a.getStatus() == status).count();
+    }
+
+    private void printTable(List<Appointment> list, boolean showFooter) {
+        Console.appointmentTableHeader();
+        for (Appointment a : list) System.out.println(a.toTableRow());
+        if (showFooter) Console.appointmentTableFooter(list.size());
+    }
+}
