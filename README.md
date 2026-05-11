@@ -1,242 +1,565 @@
-# Hospital Appointment System
+# 🏥 Hospital Appointment and Patient Record Management System
 
-![Java](https://img.shields.io/badge/Java-17%2B-orange)
-![Platform](https://img.shields.io/badge/Platform-Console_App-blue)
-![Architecture](https://img.shields.io/badge/Architecture-Layered-success)
-![Persistence](https://img.shields.io/badge/Storage-Text_File-informational)
+<div align="center">
 
-A modular, console-based Java application for managing hospital appointments with strong input validation, doctor slot control, reporting, and text-file persistence.
+![Java](https://img.shields.io/badge/Java-21-orange?style=for-the-badge&logo=java)
+![Platform](https://img.shields.io/badge/Platform-Console-blue?style=for-the-badge)
+![OOP](https://img.shields.io/badge/OOP-Principles-green?style=for-the-badge)
+![RBAC](https://img.shields.io/badge/Access-Role--Based-purple?style=for-the-badge)
+![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
 
-## Table of Contents
+</div>
 
-- [Overview](#overview)
-- [Key Features](#key-features)
-- [Architecture](#architecture)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-- [How to Use](#how-to-use)
-- [Data Storage Format](#data-storage-format)
-- [Sample Console Screenshots](#sample-console-screenshots)
-- [Troubleshooting](#troubleshooting)
+---
 
-## Overview
+## 📋 Table of Contents
 
-This project implements a Hospital Appointment System using object-oriented design and clean separation of concerns.
+- [Overview](#-overview)
+- [Features](#-features)
+- [Screenshots](#-screenshots)
+- [Project Structure](#-project-structure)
+- [OOP Concepts](#-oop-concepts)
+- [Getting Started](#-getting-started)
+- [Default Credentials](#-default-credentials)
+- [Role Permissions](#-role-permissions)
+- [Data Storage](#-data-storage)
+- [Appointment Lifecycle](#-appointment-lifecycle)
+- [Doctor Availability System](#-doctor-availability-system)
+- [Doctors Roster](#-doctors-roster)
+- [Architecture Decisions](#-architecture-decisions)
+- [Technologies Used](#-technologies-used)
 
-It supports:
+---
 
-- Patient registration during appointment booking
-- Doctor and department selection from a predefined list
-- Time slot availability checks per doctor and date
-- Appointment cancellation by ID (status update only, no hard delete)
-- Appointment rescheduling with active-slot conflict prevention
-- Appointment completion flow for today/past schedules
-- Patient history and doctor daily schedule views
-- Waitlist registration for fully booked slots
-- Immediate first-in-queue auto-fill when cancellations occur
-- Search by patient name, doctor name, or date
-- Automatic file save after add/cancel/reschedule/complete/waitlist changes
+## 🔍 Overview
 
-## Key Features
+The **Hospital Management System** is a fully console-based Java application implementing a complete **Role-Based Access Control (RBAC)** system across three distinct user roles: **Administrator**, **Doctor**, and **Patient**.
 
-- OOP requirements implemented:
-  - Encapsulation with private fields and getters/setters
-  - Inheritance: Patient extends Person
-  - Interface-driven service contract via AppointmentService
-  - Enums: Department and AppointmentStatus
-- Booking safeguards:
-  - No booking in past dates
-  - No duplicate active slot per doctor/date/time
-  - Input validation for age, date, and menu options
-- Reporting:
-  - Total appointments
-  - Total booked
-  - Total cancelled
-  - Total completed
+Each role gets its own dashboard with scoped permissions. Doctors can approve or reject patient appointment requests. Patients book appointments that start as `PENDING` and require doctor approval. Admins have full system control.
 
-## Architecture
+All data is saved automatically to plain-text files after every action and fully restored on restart — no database required.
 
-```mermaid
-flowchart LR
-    A[Main] --> B[MenuHandler]
-    B --> C[AppointmentManager]
+---
 
-    C --> D[AppointmentService Interface]
-    C --> E[FileHandler]
-    C --> F[InputValidator]
-    C --> G[DateTimeValidator]
-    C --> H[IdGenerator]
+## ✨ Features
 
-    C --> I[Models: Person, Patient, Doctor, Appointment, WaitlistEntry]
-    C --> J[Enums: Department, AppointmentStatus, WaitlistStatus]
+### 🔐 Authentication System
 
-    E --> K[data/appointments.txt]
-    E --> L[data/waitlist.txt]
+- Secure login with username and password validation
+- Patient self-registration — creates a login account and patient profile in one step
+- Password change for all roles
+- Account deactivation by admin (soft-delete, data preserved)
+- Role-based session routing — login lands you automatically in the correct dashboard
+
+### 📅 Appointment Management
+
+- Book appointments with doctor, date, and time slot selection
+- Patient bookings start as **PENDING** — await doctor approval
+- Admin bookings are **BOOKED** (auto-approved, no review needed)
+- Approve / Reject / Cancel / Complete / Reschedule workflows
+- Full appointment detail view with all patient and doctor info
+- Search by patient name, patient ID, date, doctor name, or appointment ID
+- Filter by status (7 states) or by department (12 departments)
+
+### 👨‍⚕️ Doctor Approval System
+
+- Doctors review all PENDING requests in a color-coded table (`[7] Review Appt Requests`)
+- Approve → status becomes `APPROVED`
+- Reject with optional reason → status becomes `REJECTED`, slot freed automatically
+- Rejected slots become immediately available for other patients
+
+### 🗓️ Doctor Availability Manager
+
+- Doctors set available slots **per date** via `[4] Set My Available Slots`
+- Three slot states: `FREE` · `UNAVAILABLE` · `RESERVED`
+- `FREE` — visible and bookable by patients
+- `UNAVAILABLE` — doctor blocked it; hidden from patients
+- `RESERVED` — has an active appointment; read-only
+- Toggle interactively; state persists in `data/availability.txt`
+
+### ⏳ Waitlist System
+
+- Offered automatically when all slots on a date are full
+- Queue position tracked per doctor + date
+- When a slot is cancelled, the #1 waitlist patient is auto-promoted to `PENDING`
+
+### 📊 Reports & Analytics
+
+- Total appointments broken down by all 7 statuses with ANSI colors
+- Per-department count and percentage share
+- Top 5 busiest dates
+- Waitlist count included
+
+### 🎨 ANSI Color Terminal UI
+
+| Color         | Meaning                                       |
+| ------------- | --------------------------------------------- |
+| 🔵 **Cyan**   | Section headers, Doctor Dashboard borders     |
+| 🟢 **Green**  | APPROVED / FREE slots / success messages      |
+| 🔴 **Red**    | REJECTED / UNAVAILABLE slots / error messages |
+| 🟡 **Yellow** | PENDING status / warnings                     |
+| ⚫ **Gray**   | RESERVED slots / dimmed prompts               |
+
+---
+
+## 📸 Screenshots
+
+### Welcome Banner
+
+```
+##########################################################################
+##         HOSPITAL APPOINTMENT & PATIENT RECORD                      ##
+##                    MANAGEMENT SYSTEM                                ##
+##          Professional Healthcare Platform                           ##
+##########################################################################
 ```
 
-## Project Structure
+### Doctor Dashboard
 
-```text
-hospital-appointment-system/
-|-- data/
-|   |-- appointments.txt
-|   |-- waitlist.txt
-|-- src/
-|   |-- com/hospital/appointment/
-|       |-- Main.java
-|       |-- enums/
-|       |   |-- AppointmentStatus.java
-|       |   |-- Department.java
-|       |   |-- WaitlistStatus.java
-|       |-- model/
-|       |   |-- Appointment.java
-|       |   |-- Doctor.java
-|       |   |-- Patient.java
-|       |   |-- Person.java
-|       |   |-- WaitlistEntry.java
-|       |-- qa/
-|       |   |-- QATestRunner.java
-|       |-- service/
-|       |   |-- AppointmentManager.java
-|       |   |-- AppointmentService.java
-|       |-- storage/
-|       |   |-- FileHandler.java
-|       |-- ui/
-|       |   |-- MenuHandler.java
-|       |-- util/
-|           |-- DateTimeValidator.java
-|           |-- IdGenerator.java
-|           |-- InputValidator.java
-|-- PROJECT_SPEC.md
-|-- README.md
+```
++======================================================================+
+|                          DOCTOR DASHBOARD                            |
+|         Logged in as: Dr. Santos  |  Medical Staff Portal           |
++----------------------------------------------------------------------+
+|  MY SCHEDULE                    |  PATIENT RECORDS                  |
+|  [1]  My Appointments Today     |  [5]  Patient Record Lookup       |
+|  [2]  My Full Schedule          |  [6]  Appointment Detail          |
+|  [3]  Mark Appointment Done     |                                   |
+|  [4]  Set My Available Slots    |  [7]  Review Appt Requests        |
+|                                 |  [0]  Logout                      |
++======================================================================+
 ```
 
-## Getting Started
+### Pending Requests Table
+
+```
+========================================================================
+                    PENDING APPOINTMENT REQUESTS
+========================================================================
+Appt ID          Patient Name           Date         Time     Status
+------------------------------------------------------------------------
+APT-2026-002     Juan Cruz              2026-08-10   10:00    [ PENDING ]
+APT-2026-005     Ana Reyes              2026-08-11   14:00    [ PENDING ]
+========================================================================
+Showing 2 pending request(s)
+```
+
+### Slot Availability Manager
+
+```
+========================================================================
+                         SET AVAILABLE SLOTS
+------------------------------------------------------------------------
+Doctor : Dr. Santos
+Date   : August 10, 2026
+========================================================================
+ 1.  7:00 AM  - 8:00 AM          [  RESERVED   ]
+ 2.  8:01 AM  - 9:00 AM          [ UNAVAILABLE ]
+ 3.  9:01 AM  - 10:00 AM         [  FREE       ]
+ 4.  10:01 AM - 11:00 AM         [  FREE       ]
+ 5.  1:00 PM  - 2:00 PM          [  FREE       ]
+========================================================================
+Legend: [  FREE       ]  [ UNAVAILABLE ]  [  RESERVED   ]
+```
+
+### Administrator Dashboard
+
+```
++======================================================================+
+|                      ADMINISTRATOR DASHBOARD                         |
+|      Logged in as: System Administrator  |  Full System Access       |
++----------------------------------------------------------------------+
+|  APPOINTMENTS                   |  MANAGEMENT                       |
+|  [1]  Book Appointment          |  [9]  Manage Doctors              |
+|  [2]  View All Appointments     |  [10] Manage Patients             |
+|  [3]  Appointment Detail        |  [11] View Waitlist               |
+|  [4]  Approve / Reschedule      |  [12] View Report Summary         |
+|  [5]  Cancel Appointment        |                                   |
+|  [6]  Complete Appointment      |  SEARCH & FILTER                  |
+|  [7]  View Doctor Schedule      |  [13] Search All Records          |
+|  [8]  Manage Waitlist           |  [14] Filter by Status            |
+|                                 |  [15] Filter by Department        |
+|                                 |  [0]  Logout                      |
++======================================================================+
+```
+
+---
+
+## 📁 Project Structure
+
+```
+HospitalRBAS/
+│
+├── data/                                    ← Auto-created on first run
+│   ├── users.txt                            ← Login accounts (all roles)
+│   ├── patients.txt                         ← Patient domain records
+│   ├── doctors.txt                          ← Doctor domain records
+│   ├── appointments.txt                     ← Appointment records
+│   ├── waitlist.txt                         ← Waitlist entries
+│   └── availability.txt                     ← Doctor per-date slot states
+│
+└── src/com/hospital/appointment/
+    │
+    ├── Main.java                            ← Entry point: bootstrap + role router
+    │
+    ├── auth/
+    │   └── AuthService.java                 ← Login, registration, password change
+    │
+    ├── dashboard/
+    │   ├── AdminDashboard.java              ← Admin menu loop (15 options)
+    │   ├── DoctorDashboard.java             ← Doctor menu loop (7 options)
+    │   └── PatientDashboard.java            ← Patient menu loop (6 options)
+    │
+    ├── enums/
+    │   ├── AppointmentStatus.java           ← 7 states: PENDING|APPROVED|BOOKED|CANCELLED|COMPLETED|REJECTED|NO_SHOW
+    │   ├── Department.java                  ← 12 departments
+    │   ├── UserRole.java                    ← ADMIN | DOCTOR | PATIENT
+    │   └── WaitlistStatus.java              ← WAITING | PROMOTED | REMOVED | EXPIRED
+    │
+    ├── model/
+    │   ├── Person.java                      ← Abstract base class
+    │   ├── Patient.java                     ← extends Person
+    │   ├── Doctor.java                      ← Doctor domain record
+    │   ├── User.java                        ← Login account linked to Patient/Doctor
+    │   ├── Appointment.java                 ← Full appointment record
+    │   ├── DoctorAvailability.java          ← Per-date slot state map (FREE/UNAVAIL/RESERVED)
+    │   └── WaitlistEntry.java               ← Waitlist record with queue position
+    │
+    ├── service/
+    │   └── AppointmentService.java          ← All business logic, shared by all dashboards
+    │
+    ├── storage/
+    │   └── DataStore.java                   ← Central in-memory store + all file I/O
+    │
+    ├── ui/
+    │   └── Console.java                     ← All rendering: banners, tables, ANSI colors
+    │
+    └── util/
+        ├── DateUtils.java                   ← Date parsing, formatting, timestamps
+        ├── IdGenerator.java                 ← ID generation + counter sync after load
+        └── InputValidator.java              ← Input reading with validation retry loops
+```
+
+**22 source files · ~3,300 lines of Java**
+
+---
+
+## 🧠 OOP Concepts
+
+| Concept                             | Where & How                                                                                                                                          |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Encapsulation**                   | Every model field is `private`. Access is only through getters and setters. No class reaches into another class's data directly.                     |
+| **Inheritance**                     | `Patient extends Person` — inherits `name`, `age`, `address`, `contactNumber`, `email` from the abstract base class.                                 |
+| **Abstraction**                     | `Person` is declared `abstract` — it defines the contract but cannot be instantiated on its own.                                                     |
+| **Polymorphism**                    | Role routing in `Main.java` dispatches to the correct dashboard at runtime based on `UserRole` without cascading if-else chains.                     |
+| **Enums**                           | `UserRole` (3 values), `AppointmentStatus` (7 values), `Department` (12 values), `WaitlistStatus` (4 values) — each carries a display name and icon. |
+| **Separation of Concerns**          | Auth / Service / Dashboard / Storage / UI / Util are fully separate layers. No class does two jobs.                                                  |
+| **Single Responsibility Principle** | `Console.java` only renders. `DataStore.java` only persists. `AppointmentService.java` only applies rules.                                           |
+| **DRY Principle**                   | `AppointmentService` is written once and called by all three dashboards — no duplicated booking or cancellation logic.                               |
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
 
-- JDK 17 or newer
-- Java and javac available in your PATH
+- **Java 21** or higher (`java --version` to check)
+- Any terminal — Windows CMD / PowerShell, macOS Terminal, Linux bash
 
-### Verify Java Installation
-
-```powershell
-java -version
-javac -version
-```
-
-### Build and Run (Windows PowerShell)
-
-```powershell
-if (Test-Path out) { Remove-Item -Recurse -Force out }
-New-Item -ItemType Directory -Path out | Out-Null
-$sources = Get-ChildItem -Path src -Recurse -Filter *.java | ForEach-Object { $_.FullName }
-javac -d out $sources
-java -cp out com.hospital.appointment.Main
-```
-
-### Run QA Scenario Suite
-
-```powershell
-java -cp out com.hospital.appointment.qa.QATestRunner
-```
-
-### Build and Run (macOS/Linux)
+### Clone
 
 ```bash
+git clone https://github.com/your-username/hospital-management-system.git
+cd hospital-management-system
+```
+
+### Compile
+
+```bash
+# Create output folder
 mkdir -p out
-javac -d out $(find src -name "*.java")
+
+# Linux / macOS
+javac -d out $(find com -name "*.java")
+
+# Windows CMD
+for /r com %f in (*.java) do javac -d out "%f"
+
+# Windows PowerShell
+Get-ChildItem -Recurse -Filter "*.java" com | ForEach-Object { javac -d out $_.FullName }
+```
+
+### Run
+
+```bash
 java -cp out com.hospital.appointment.Main
 ```
 
-## How to Use
-
-When the app starts, choose from the menu:
-
-1. Add Appointment
-2. View Appointments
-3. Cancel Appointment
-4. Search Appointment
-5. View Report Summary
-6. Reschedule Appointment
-7. Mark Appointment Completed
-8. View Patient History
-9. View Doctor Daily Schedule
-10. Join Waitlist
-11. View Waitlist
-12. Exit
-
-## Data Storage Formats
-
-Appointments are stored in a pipe-delimited format in data/appointments.txt.
-
-Example:
-
-```text
-APT-2026-001|John Doe|25|Manila|D-01|Dr. Smith|CARDIOLOGY|2026-04-20|10:00|BOOKED
-```
-
-Fields:
-
-1. Appointment ID
-2. Patient Name
-3. Patient Age
-4. Patient Address
-5. Doctor ID
-6. Doctor Name
-7. Department
-8. Date
-9. Time
-10. Status
-
-Waitlist entries are stored in a separate pipe-delimited file: data/waitlist.txt.
-
-Example:
-
-```text
-WLT-2026-001|PAT-011|Waitlist Alpha|41|Queue Street 1|D-01|Dr. Smith|CARDIOLOGY|2026-04-23|09:00|WAITING|2026-04-17T15:10:30|
-```
-
-Fields:
-
-1. Waitlist ID
-2. Patient ID
-3. Patient Name
-4. Patient Age
-5. Patient Address
-6. Doctor ID
-7. Doctor Name
-8. Department
-9. Preferred Date
-10. Preferred Time
-11. Waitlist Status
-12. Created At
-13. Auto-filled Appointment ID (empty until auto-filled)
-
-## Sample Console Screenshots
-
-Add screenshots to docs/screenshots using the filenames below to auto-display them in this README.
-
-| Screen               | Preview                                                        |
-| -------------------- | -------------------------------------------------------------- |
-| Main Menu            | ![Main Menu](docs/screenshots/main-menu.png)                   |
-| Add Appointment Flow | ![Add Appointment](docs/screenshots/add-appointment.png)       |
-| View Appointments    | ![View Appointments](docs/screenshots/view-appointments.png)   |
-| Search Appointment   | ![Search Appointment](docs/screenshots/search-appointment.png) |
-| Report Summary       | ![Report Summary](docs/screenshots/report-summary.png)         |
-
-## Troubleshooting
-
-### javac is not recognized
-
-Install JDK and make sure the JDK bin directory is in your system PATH. Reopen terminal and rerun java -version and javac -version.
-
-### No data loaded on first run
-
-This is normal. data/appointments.txt and data/waitlist.txt are created when needed.
-
-### Invalid date or menu inputs
-
-Use date format yyyy-MM-dd and numeric menu options only.
+> **First run:** The `data/` folder is created automatically and all seed accounts (admin + 12 doctors) are written. No manual setup needed.
 
 ---
+
+## 🔑 Default Credentials
+
+### Administrator
+
+| Username | Password   |
+| -------- | ---------- |
+| `admin`  | `admin123` |
+
+### Doctors — all use password `doc123`
+
+| Username        | Doctor         | Department              |
+| --------------- | -------------- | ----------------------- |
+| `dr.santos`     | Dr. Santos     | Cardiology              |
+| `dr.reyes`      | Dr. Reyes      | Pediatrics              |
+| `dr.cruz`       | Dr. Cruz       | Orthopedics             |
+| `dr.garcia`     | Dr. Garcia     | Neurology               |
+| `dr.mendoza`    | Dr. Mendoza    | Dermatology             |
+| `dr.torres`     | Dr. Torres     | Ophthalmology           |
+| `dr.villanueva` | Dr. Villanueva | General Medicine        |
+| `dr.aquino`     | Dr. Aquino     | Obstetrics & Gynecology |
+| `dr.bautista`   | Dr. Bautista   | Oncology                |
+| `dr.lim`        | Dr. Lim        | Psychiatry              |
+| `dr.ramos`      | Dr. Ramos      | Pulmonology             |
+| `dr.delacreuz`  | Dr. Dela Cruz  | Endocrinology           |
+
+### Patients
+
+Select **[2] Register as New Patient** from the main menu to create your own account.
+
+---
+
+## 🛡️ Role Permissions
+
+### 👔 Administrator
+
+| Feature                                        | ✅  |
+| ---------------------------------------------- | --- |
+| Book appointment (walk-in or existing patient) | ✅  |
+| View / detail / search all appointments        | ✅  |
+| Reschedule any appointment                     | ✅  |
+| Cancel any appointment                         | ✅  |
+| Mark completed / no-show                       | ✅  |
+| Add, edit, deactivate doctors                  | ✅  |
+| View, search, deactivate patients              | ✅  |
+| View and manage waitlist                       | ✅  |
+| View report summary + department breakdown     | ✅  |
+| View any doctor's daily schedule               | ✅  |
+| Filter by status / department                  | ✅  |
+
+### 👨‍⚕️ Doctor
+
+| Feature                                        | Scope                 |
+| ---------------------------------------------- | --------------------- |
+| View today's appointments                      | Own patients only     |
+| View full schedule (any date)                  | Own patients only     |
+| Mark appointment completed                     | Own appointments only |
+| Set available date & time slots                | Own schedule only     |
+| View patient records                           | Own patients only     |
+| **Review & approve / reject PENDING requests** | Own appointments only |
+
+### 🧑‍🤝‍🧑 Patient
+
+| Feature                    | Notes                            |
+| -------------------------- | -------------------------------- |
+| Register account           | Creates login + patient profile  |
+| Book new appointment       | Starts as PENDING                |
+| Join waitlist              | Auto-offered when slots are full |
+| View upcoming appointments | Own only                         |
+| Cancel appointment         | Own only                         |
+| View full history          | Own only                         |
+| Update profile             | Name, address, contact, email    |
+| Change password            | —                                |
+
+---
+
+## 💾 Data Storage
+
+Six plain-text pipe-delimited files. One record per line. No database required.
+
+### File Format Reference
+
+**`users.txt`** (8 fields)
+
+```
+USR-001|admin|admin123|ADMIN||System Administrator|true|2026-05-10 09:00:00
+```
+
+**`patients.txt`** (10 fields)
+
+```
+PAT-2026-001|USR-014|Juan Cruz|28|Manila|09171234567|juan@email.com|O+|Maria Cruz|2026-05-10 09:30:00
+```
+
+**`doctors.txt`** (8 fields)
+
+```
+D-01|USR-002|Santos|CARDIOLOGY|Interventional Cardiology|18|Mon-Fri|DEFAULT
+```
+
+**`appointments.txt`** (8 fields)
+
+```
+APT-2026-001|PAT-2026-001|D-01|2026-08-10|08:00|BOOKED|Hypertension check|2026-05-10 09:00:00
+APT-2026-002|PAT-2026-002|D-01|2026-08-10|10:00|PENDING|Back pain|2026-05-10 09:30:00
+```
+
+**`waitlist.txt`** (8 fields)
+
+```
+WL-2026-001|PAT-2026-003|D-01|2026-08-10|WAITING|2026-05-10 09:45:00|1|Chest pain
+```
+
+**`availability.txt`** (doctor + date + comma-separated slot:state pairs)
+
+```
+D-01|2026-08-10|08:00:RESERVED,09:00:UNAVAILABLE,10:00:FREE,11:00:FREE
+```
+
+### ID Format Reference
+
+| Entity         | Format         | Example        |
+| -------------- | -------------- | -------------- |
+| Appointment    | `APT-YYYY-###` | `APT-2026-007` |
+| Patient        | `PAT-YYYY-###` | `PAT-2026-003` |
+| Waitlist Entry | `WL-YYYY-###`  | `WL-2026-001`  |
+| User Account   | `USR-###`      | `USR-015`      |
+| Doctor         | `D-##`         | `D-01`         |
+
+---
+
+## 🔄 Appointment Lifecycle
+
+```
+Patient books
+      │
+      ▼
+  [ PENDING ]  ──── Doctor reviews via [7] ────►  [ APPROVED ]
+      │                                                  │
+      │                                         Doctor marks done
+      │                                                  │
+      │                                            [ COMPLETED ]
+      │
+      ├──── Doctor rejects ──────────────────►  [ REJECTED ]
+      │                                    (slot freed → next waitlist patient promoted)
+      │
+      └──── Patient/Admin cancels ──────────►  [ CANCELLED ]
+                                          (slot freed → waitlist auto-promotes to PENDING)
+
+Admin books walk-in
+      │
+      ▼
+   [ BOOKED ]  (bypasses PENDING, no doctor review needed)
+      │
+      └──── Mark done / cancel → [ COMPLETED ] / [ CANCELLED ]
+
+Doctor/Admin marks no-show
+      │
+      ▼
+  [ NO_SHOW ]
+```
+
+---
+
+## 📅 Doctor Availability System
+
+### Time Slots
+
+| #   | Display             | System Key |
+| --- | ------------------- | ---------- |
+| 1   | 7:00 AM – 8:00 AM   | `08:00`    |
+| 2   | 8:01 AM – 9:00 AM   | `09:00`    |
+| 3   | 9:01 AM – 10:00 AM  | `10:00`    |
+| 4   | 10:01 AM – 11:00 AM | `11:00`    |
+| 5   | 1:00 PM – 2:00 PM   | `13:00`    |
+| 6   | 2:01 PM – 3:00 PM   | `14:00`    |
+| 7   | 3:01 PM – 4:00 PM   | `15:00`    |
+| 8   | 4:01 PM – 5:00 PM   | `16:00`    |
+| 9   | 5:01 PM – 6:00 PM   | `17:00`    |
+
+### Slot State Rules
+
+| State         | Patient can book? | Doctor can change? | How it's set                                          |
+| ------------- | ----------------- | ------------------ | ----------------------------------------------------- |
+| `FREE`        | ✅ Yes            | ✅ → UNAVAILABLE   | Default; restored when appointment cancelled/rejected |
+| `UNAVAILABLE` | ❌ Hidden         | ✅ → FREE          | Doctor manually blocks it                             |
+| `RESERVED`    | ❌ Hidden         | ❌ Read-only       | Set automatically when appointment is created         |
+
+---
+
+## 🏥 Doctors Roster
+
+| ID   | Name       | Department              | Specialization            | Schedule | Exp    |
+| ---- | ---------- | ----------------------- | ------------------------- | -------- | ------ |
+| D-01 | Santos     | Cardiology              | Interventional Cardiology | Mon–Fri  | 18 yrs |
+| D-02 | Reyes      | Pediatrics              | Neonatology               | Mon–Sat  | 12 yrs |
+| D-03 | Cruz       | Orthopedics             | Sports Medicine           | Tue–Sat  | 15 yrs |
+| D-04 | Garcia     | Neurology               | Stroke & Epilepsy         | Mon–Fri  | 20 yrs |
+| D-05 | Mendoza    | Dermatology             | Cosmetic Dermatology      | Mon–Fri  | 9 yrs  |
+| D-06 | Torres     | Ophthalmology           | Retina Specialist         | Mon–Thu  | 14 yrs |
+| D-07 | Villanueva | General Medicine        | Family Medicine           | Mon–Sun  | 11 yrs |
+| D-08 | Aquino     | Obstetrics & Gynecology | Maternal-Fetal Medicine   | Mon–Fri  | 16 yrs |
+| D-09 | Bautista   | Oncology                | Medical Oncology          | Mon–Fri  | 22 yrs |
+| D-10 | Lim        | Psychiatry              | Clinical Psychology       | Mon–Fri  | 10 yrs |
+| D-11 | Ramos      | Pulmonology             | Critical Care             | Mon–Sat  | 17 yrs |
+| D-12 | Dela Cruz  | Endocrinology           | Diabetes & Metabolism     | Mon–Fri  | 13 yrs |
+
+---
+
+## 📐 Architecture Decisions
+
+**Why flat files instead of a database?**
+This project targets students, thesis use, and small clinics. Flat-file storage means zero setup — just compile and run. The `DataStore` class is the single source of truth for all in-memory data and handles all I/O in one place, making it straightforward to swap in SQLite or MySQL later without touching any business logic.
+
+**Why a shared `AppointmentService`?**
+All three dashboards perform many of the same operations. Writing the logic once in `AppointmentService` and calling it from Admin, Doctor, and Patient dashboards eliminates duplication and guarantees the same validation rules apply everywhere, regardless of who is logged in.
+
+**Why PENDING for patient bookings?**
+In real clinical workflows, walk-ins confirmed by staff are immediately valid, but online/self-requested appointments require review. The `PENDING → APPROVED / REJECTED` flow reflects actual clinical practice and gives doctors meaningful control over their own schedule.
+
+**Why is `DoctorAvailability` a separate model/file?**
+Mixing per-date slot states into the `Doctor` model would bloat it with unbounded map data. Keeping it in its own class and its own file (`availability.txt`) keeps each entity clean and makes the data easy to audit.
+
+---
+
+## 🛠️ Technologies Used
+
+| Technology                                                  | Purpose                            |
+| ----------------------------------------------------------- | ---------------------------------- |
+| Java 21                                                     | Core language                      |
+| OOP (Encapsulation, Inheritance, Abstraction, Polymorphism) | Architecture                       |
+| ANSI Escape Codes                                           | Terminal colors                    |
+| `java.time` API                                             | Date parsing and formatting        |
+| Plain-text flat files                                       | Persistence (no external DB)       |
+| `javac`                                                     | Compilation (no build tool needed) |
+
+---
+
+## 🤝 Contributing
+
+Pull requests are welcome. For major changes, please open an issue first.
+
+1. Fork the repository
+2. Create your feature branch: `git checkout -b feature/your-feature`
+3. Commit your changes: `git commit -m 'Add your feature'`
+4. Push to the branch: `git push origin feature/your-feature`
+5. Open a Pull Request
+
+---
+
+## 📄 License
+
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+
+---
+
+<div align="center">
+
+Made with ☕ and Java
+
+**Hospital Management System — Role-Based Access Control Edition**
+
+_22 source files · ~3,300 lines · Zero dependencies_
+
+</div>

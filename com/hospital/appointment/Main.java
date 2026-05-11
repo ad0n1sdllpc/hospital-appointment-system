@@ -12,7 +12,7 @@ import java.util.Scanner;
 
 /**
  * ============================================================
- *  Hospital Management System v3.0  — Main Entry Point
+ *  Hospital Management System  — Main Entry Point
  * ============================================================
  *
  *  Responsibilities (ONLY):

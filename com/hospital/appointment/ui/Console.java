@@ -24,8 +24,9 @@ public class Console {
         System.out.println();
         System.out.println("  " + THICK);
         System.out.println("  ##" + center("", W) + "##");
-        System.out.println("  ##" + center("H O S P I T A L   M A N A G E M E N T   S Y S T E M", W) + "##");
-        System.out.println("  ##" + center("Professional Appointment & Records Platform  v3.0", W) + "##");
+        System.out.println("  ##" + center("HOSPITAL APPOINTMENT & PATIENT RECORD", W) + "##");
+        System.out.println("  ##" + center("MANAGEMENT SYSTEM", W) + "##");
+        System.out.println("  ##" + center("Professional Healthcare Platform     ", W) + "##");
         System.out.println("  ##" + center("", W) + "##");
         System.out.println("  " + THICK);
         System.out.println();
@@ -35,7 +36,8 @@ public class Console {
         System.out.println();
         System.out.println("  " + THICK);
         System.out.println("  ##" + center("", W) + "##");
-        System.out.println("  ##" + center("Thank you for using Hospital Management System", W) + "##");
+        System.out.println("  ##" + center("Thank you for using Hospital Appointment &", W) + "##");
+        System.out.println("  ##" + center("Patient Record Management System", W) + "##");
         System.out.println("  ##" + center("All records saved.  Goodbye!", W) + "##");
         System.out.println("  ##" + center("", W) + "##");
         System.out.println("  " + THICK);
@@ -89,9 +91,9 @@ public class Console {
         System.out.println("  +" + LINE + "+");
         System.out.println("  |" + center("WELCOME  --  Please log in or register", W) + "|");
         System.out.println("  +" + DASH + "+");
-        System.out.println("  |  [1]  Login                                                        |");
-        System.out.println("  |  [2]  Register as New Patient                                      |");
-        System.out.println("  |  [0]  Exit Application                                             |");
+        System.out.println("  |  [1]  Login                                                          |");
+        System.out.println("  |  [2]  Register as New Patient                                        |");
+        System.out.println("  |  [0]  Exit Application                                               |");
         System.out.println("  +" + LINE + "+");
         System.out.println();
     }
