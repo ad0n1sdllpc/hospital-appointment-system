@@ -510,7 +510,7 @@ Doctor/Admin marks no-show
 ## 📐 Architecture Decisions
 
 **Why flat files instead of a database?**
-This project targets students, thesis use, and small clinics. Flat-file storage means zero setup — just compile and run. The `DataStore` class is the single source of truth for all in-memory data and handles all I/O in one place, making it straightforward to swap in SQLite or MySQL later without touching any business logic.
+Flat-file storage means zero setup — just compile and run. The `DataStore` class is the single source of truth for all in-memory data and handles all I/O in one place, making it straightforward to swap in SQLite or MySQL later without touching any business logic.
 
 **Why a shared `AppointmentService`?**
 All three dashboards perform many of the same operations. Writing the logic once in `AppointmentService` and calling it from Admin, Doctor, and Patient dashboards eliminates duplication and guarantees the same validation rules apply everywhere, regardless of who is logged in.
