@@ -6,6 +6,8 @@ import com.hospital.appointment.storage.DataStore;
 import com.hospital.appointment.ui.Console;
 import com.hospital.appointment.util.*;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.Objects;
@@ -79,11 +81,12 @@ public class AppointmentService {
 
         // ── 3. Select date ────────────────────────────────────────────────────
         Console.section("Date & Time");
-        String date = input.readFutureDate("  Preferred Date (yyyy-MM-dd) : ");
+        String date = promptDoctorAvailableDate(doctor, "  Preferred Date (yyyy-MM-dd) : ");
 
         // ── 4. Select time slot ───────────────────────────────────────────────
         String slot = promptSlotSelect(doctor, date);
         if (slot == null) {
+            if (!isDoctorAvailableOnDate(doctor, date)) return;
             offerWaitlist(patient, doctor, date);
             return;
         }
@@ -259,7 +262,7 @@ public class AppointmentService {
             if (newDoctor == null) return;
         }
 
-        String newDate = input.readFutureDate("  New Date (yyyy-MM-dd)        : ");
+        String newDate = promptDoctorAvailableDate(newDoctor, "  New Date (yyyy-MM-dd)        : ");
         String newSlot = promptSlotSelect(newDoctor, newDate);
         if (newSlot == null) { Console.warn("No available slots. Reschedule aborted."); return; }
 
@@ -353,7 +356,7 @@ public class AppointmentService {
         Doctor doctor = promptDoctorSelect();
         if (doctor == null) return;
 
-        String date  = input.readFutureDate("  Preferred Date (yyyy-MM-dd) : ");
+        String date  = promptDoctorAvailableDate(doctor, "  Preferred Date (yyyy-MM-dd) : ");
         String notes = input.readOptional  ("  Notes (optional)            : ");
 
         long count = store.waitlist.stream()
@@ -785,8 +788,97 @@ public class AppointmentService {
         }
     }
 
+    private String promptDoctorAvailableDate(Doctor doctor, String prompt) {
+        System.out.println("  Doctor schedule: " + doctor.getSchedule());
+        System.out.println("  Dates outside this schedule are not allowed.");
+        while (true) {
+            String date = input.readFutureDate(prompt);
+            if (isDoctorAvailableOnDate(doctor, date)) return date;
+            Console.warn("Dr. " + doctor.getName() + " is not available on " +
+                DateUtils.pretty(date) + " (" + dayName(date) + "). Schedule: " + doctor.getSchedule() + ".");
+        }
+    }
+
+    private boolean isDoctorAvailableOnDate(Doctor doctor, String date) {
+        LocalDate parsedDate = DateUtils.parseDate(date);
+        if (parsedDate == null) return false;
+
+        Set<DayOfWeek> days = parseScheduleDays(doctor.getSchedule());
+        if (days.isEmpty()) return false;
+        return days.contains(parsedDate.getDayOfWeek());
+    }
+
+    private Set<DayOfWeek> parseScheduleDays(String schedule) {
+        Set<DayOfWeek> days = EnumSet.noneOf(DayOfWeek.class);
+        if (schedule == null || schedule.trim().isEmpty()) return days;
+
+        String normalized = schedule.trim().replace(" to ", "-").replace("/", ",");
+        if (normalized.equalsIgnoreCase("daily")
+            || normalized.equalsIgnoreCase("everyday")
+            || normalized.equalsIgnoreCase("every day")) {
+            return EnumSet.allOf(DayOfWeek.class);
+        }
+
+        for (String part : normalized.split(",")) {
+            String token = part.trim();
+            if (token.isEmpty()) continue;
+
+            if (token.contains("-")) {
+                String[] bounds = token.split("-", 2);
+                DayOfWeek start = parseDay(bounds[0]);
+                DayOfWeek end = parseDay(bounds[1]);
+                if (start != null && end != null) addDayRange(days, start, end);
+                continue;
+            }
+
+            DayOfWeek day = parseDay(token);
+            if (day != null) days.add(day);
+        }
+
+        return days;
+    }
+
+    private void addDayRange(Set<DayOfWeek> days, DayOfWeek start, DayOfWeek end) {
+        int current = start.getValue();
+        int target = end.getValue();
+        while (true) {
+            days.add(DayOfWeek.of(current));
+            if (current == target) break;
+            current = current == 7 ? 1 : current + 1;
+        }
+    }
+
+    private DayOfWeek parseDay(String rawDay) {
+        String day = rawDay.trim().toLowerCase();
+        if (day.length() >= 3) day = day.substring(0, 3);
+
+        return switch (day) {
+            case "mon" -> DayOfWeek.MONDAY;
+            case "tue" -> DayOfWeek.TUESDAY;
+            case "wed" -> DayOfWeek.WEDNESDAY;
+            case "thu" -> DayOfWeek.THURSDAY;
+            case "fri" -> DayOfWeek.FRIDAY;
+            case "sat" -> DayOfWeek.SATURDAY;
+            case "sun" -> DayOfWeek.SUNDAY;
+            default -> null;
+        };
+    }
+
+    private String dayName(String date) {
+        LocalDate parsedDate = DateUtils.parseDate(date);
+        if (parsedDate == null) return "invalid date";
+        String day = parsedDate.getDayOfWeek().toString().toLowerCase();
+        return day.substring(0, 1).toUpperCase() + day.substring(1);
+    }
+
     /** Time slot selection. Returns null when no slots free or user cancels. */
     private String promptSlotSelect(Doctor doctor, String date) {
+        if (!isDoctorAvailableOnDate(doctor, date)) {
+            Console.warn("Dr. " + doctor.getName() + " is not available on " +
+                DateUtils.pretty(date) + " (" + dayName(date) + ").");
+            return null;
+        }
+
         // Get doctor's configured slots
         List<String> allSlots = ("DEFAULT".equals(doctor.getAvailableSlots()))
             ? DEFAULT_SLOTS
@@ -830,6 +922,12 @@ public class AppointmentService {
     }
 
     private void joinWaitlistDirect(Patient patient, Doctor doctor, String date) {
+        if (!isDoctorAvailableOnDate(doctor, date)) {
+            Console.warn("Cannot join waitlist because Dr. " + doctor.getName() +
+                " is not available on " + DateUtils.pretty(date) + " (" + dayName(date) + ").");
+            return;
+        }
+
         long count = store.waitlist.stream()
             .filter(w -> w.getDoctorId().equals(doctor.getDoctorId())
                       && w.getPreferredDate().equals(date)

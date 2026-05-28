@@ -113,13 +113,13 @@ public class InputValidator {
         }
     }
 
-    /** Contact number: 09XX-XXX-XXXX or 09XXXXXXXXX */
+    /** Philippine mobile number: 09XX-XXX-XXXX or 09XXXXXXXXX */
     public String readContact(String prompt) {
         while (true) {
             System.out.print(prompt);
             String input = scanner.nextLine().trim();
             if (input.matches(CONTACT_REGEX)) return input;
-            Console.warn("Enter a valid contact number: 09XX-XXX-XXXX or 09XXXXXXXXX.");
+            Console.warn("Enter a valid Philippine mobile number: 09XX-XXX-XXXX or 09XXXXXXXXX.");
         }
     }
 
@@ -129,7 +129,7 @@ public class InputValidator {
             System.out.print(prompt);
             String input = scanner.nextLine().trim();
             if (input.isEmpty() || input.matches(CONTACT_REGEX)) return input;
-            Console.warn("Enter a valid contact number: 09XX-XXX-XXXX or 09XXXXXXXXX.");
+            Console.warn("Enter a valid Philippine mobile number: 09XX-XXX-XXXX or 09XXXXXXXXX.");
         }
     }
 
