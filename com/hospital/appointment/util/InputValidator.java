@@ -10,6 +10,12 @@ import java.util.Scanner;
  */
 public class InputValidator {
 
+    private static final int MAX_AGE = 130;
+    private static final String FULL_NAME_REGEX = "^[A-Za-z]+(?:[ -][A-Za-z]+)*$";
+    private static final String CONTACT_REGEX = "^(09\\d{2}-\\d{3}-\\d{4}|09\\d{9})$";
+    private static final String EMAIL_REGEX =
+        "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)*@[A-Za-z0-9-]+(?:\\.[A-Za-z]{2,})+$";
+
     private final Scanner scanner;
 
     public InputValidator(Scanner scanner) {
@@ -32,6 +38,26 @@ public class InputValidator {
         return scanner.nextLine().trim();
     }
 
+    /** Full name: letters, spaces, and hyphens only */
+    public String readFullName(String prompt) {
+        while (true) {
+            System.out.print(prompt);
+            String input = scanner.nextLine().trim();
+            if (input.matches(FULL_NAME_REGEX)) return input;
+            Console.warn("Full name must use letters, spaces, and hyphens only.");
+        }
+    }
+
+    /** Optional full name with the same validation */
+    public String readOptionalFullName(String prompt) {
+        while (true) {
+            System.out.print(prompt);
+            String input = scanner.nextLine().trim();
+            if (input.isEmpty() || input.matches(FULL_NAME_REGEX)) return input;
+            Console.warn("Full name must use letters, spaces, and hyphens only.");
+        }
+    }
+
     /** Positive integer (e.g., age) */
     public int readPositiveInt(String prompt) {
         while (true) {
@@ -44,6 +70,11 @@ public class InputValidator {
                 Console.warn("Please enter a valid whole number.");
             }
         }
+    }
+
+    /** Age within the system limit */
+    public int readAge(String prompt) {
+        return readIntInRange(prompt, 1, MAX_AGE);
     }
 
     /** Integer within [min, max] inclusive */
@@ -82,25 +113,39 @@ public class InputValidator {
         }
     }
 
-    /** Contact number: 7-15 digits */
+    /** Contact number: 09XX-XXX-XXXX or 09XXXXXXXXX */
     public String readContact(String prompt) {
         while (true) {
             System.out.print(prompt);
             String input = scanner.nextLine().trim();
-            String digits = input.replaceAll("[^0-9]", "");
-            if (digits.length() >= 7 && digits.length() <= 15) return input;
-            Console.warn("Enter a valid contact number (7-15 digits).");
+            if (input.matches(CONTACT_REGEX)) return input;
+            Console.warn("Enter a valid contact number: 09XX-XXX-XXXX or 09XXXXXXXXX.");
         }
     }
 
-    /** Email with basic validation; empty is allowed */
+    /** Optional contact number with the same validation */
+    public String readOptionalContact(String prompt) {
+        while (true) {
+            System.out.print(prompt);
+            String input = scanner.nextLine().trim();
+            if (input.isEmpty() || input.matches(CONTACT_REGEX)) return input;
+            Console.warn("Enter a valid contact number: 09XX-XXX-XXXX or 09XXXXXXXXX.");
+        }
+    }
+
+    /** Email with format validation; empty is allowed */
     public String readEmail(String prompt) {
         while (true) {
             System.out.print(prompt);
             String input = scanner.nextLine().trim();
-            if (input.isEmpty() || (input.contains("@") && input.contains("."))) return input;
+            if (input.isEmpty() || input.matches(EMAIL_REGEX)) return input;
             Console.warn("Enter a valid email address, or press Enter to skip.");
         }
+    }
+
+    /** Optional email with the same validation */
+    public String readOptionalEmail(String prompt) {
+        return readEmail(prompt);
     }
 
     /** Blood type or empty */

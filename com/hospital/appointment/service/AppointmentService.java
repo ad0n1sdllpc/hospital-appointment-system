@@ -25,6 +25,20 @@ public class AppointmentService {
 
     private static final int WAITLIST_MAX = 5;
 
+    private static final ConcernOption[] CONCERN_OPTIONS = {
+        new ConcernOption("Chest pain, palpitations, high blood pressure", Department.CARDIOLOGY),
+        new ConcernOption("Difficulty breathing, cough, asthma, lung concern", Department.PULMONOLOGY),
+        new ConcernOption("Skin rashes, acne, itching, mole or skin concern", Department.DERMATOLOGY),
+        new ConcernOption("Bone, joint, back pain, sprain, injury", Department.ORTHOPEDICS),
+        new ConcernOption("Headache, seizure, numbness, dizziness, nerve concern", Department.NEUROLOGY),
+        new ConcernOption("Eye pain, blurry vision, redness, vision concern", Department.OPHTHALMOLOGY),
+        new ConcernOption("Child fever, child check-up, pediatric concern", Department.PEDIATRICS),
+        new ConcernOption("Pregnancy, menstrual concern, reproductive health", Department.OBSTETRICS),
+        new ConcernOption("Diabetes, thyroid, hormones, metabolism concern", Department.ENDOCRINOLOGY),
+        new ConcernOption("Anxiety, depression, stress, sleep or mental health", Department.PSYCHIATRY),
+        new ConcernOption("Cancer screening, tumor, chemotherapy concern", Department.ONCOLOGY)
+    };
+
     private final DataStore      store;
     private final InputValidator input;
 
@@ -58,8 +72,9 @@ public class AppointmentService {
         }
 
         // ── 2. Select doctor ──────────────────────────────────────────────────
-        Console.section("Select Doctor");
-        Doctor doctor = promptDoctorSelect();
+        Doctor doctor = preselectedPatient != null
+            ? promptGuidedDoctorSelect()
+            : promptDoctorSelect();
         if (doctor == null) return;
 
         // ── 3. Select date ────────────────────────────────────────────────────
@@ -566,7 +581,7 @@ public class AppointmentService {
             Console.fieldLine("  Address",           p.getAddress());
             Console.fieldLine("  Contact",           p.getContactNumber());
             Console.fieldLine("  Blood Type",        p.getBloodType().isEmpty() ? "N/A" : p.getBloodType());
-            Console.fieldLine("  Emergency Contact", p.getEmergencyContact());
+            Console.fieldLine("  Emergency Contact Number", p.getEmergencyContact());
 
             // Show their appointment history with this doctor
             System.out.println();
@@ -584,21 +599,190 @@ public class AppointmentService {
     // PRIVATE HELPERS
     // =========================================================================
 
+    private Doctor promptGuidedDoctorSelect() {
+        Console.section("Tell us about your concern");
+        System.out.println("  Choose the option closest to what you are experiencing.");
+        System.out.println("  This helps recommend the right department before choosing a doctor.");
+        System.out.println();
+        System.out.println("  [1] Search by symptom, body part, or keyword");
+        System.out.println("  [2] Not sure - start with General Medicine");
+        System.out.println("  [3] Browse departments / specializations");
+        for (int i = 0; i < CONCERN_OPTIONS.length; i++) {
+            ConcernOption option = CONCERN_OPTIONS[i];
+            System.out.printf("  [%d] %s -> %s%n",
+                i + 4, option.label, option.department.getDisplayName());
+        }
+
+        int choice = input.readIntInRange("\n  Select concern : ", 1, CONCERN_OPTIONS.length + 3);
+        Department department;
+        String reason;
+
+        if (choice == 1) {
+            String keyword = input.readString("  Symptom / keyword : ");
+            department = recommendDepartment(keyword);
+            reason = "Based on keyword: " + keyword;
+        } else if (choice == 2) {
+            department = Department.GENERAL_MEDICINE;
+            reason = "Not sure";
+        } else if (choice == 3) {
+            department = promptDepartmentWithDescriptions();
+            reason = "Selected department";
+        } else {
+            ConcernOption option = CONCERN_OPTIONS[choice - 4];
+            department = option.department;
+            reason = option.label;
+        }
+
+        Console.section("Recommended Specialist");
+        Console.fieldLine("  Concern", reason);
+        Console.fieldLine("  Department", department.getDisplayName());
+        Console.fieldLine("  What they handle", departmentDescription(department));
+
+        List<Doctor> matches = store.doctors.values().stream()
+            .filter(d -> d.getDepartment() == department)
+            .collect(Collectors.toList());
+
+        if (matches.isEmpty()) {
+            Console.warn("No doctor found in " + department.getDisplayName() + ". Showing all doctors instead.");
+            return promptDoctorSelect();
+        }
+
+        return promptDoctorSelect(matches, "Choose from recommended doctors");
+    }
+
+    private Department promptDepartmentWithDescriptions() {
+        Department[] depts = Department.values();
+        System.out.println();
+        for (int i = 0; i < depts.length; i++) {
+            Department dept = depts[i];
+            System.out.printf("  [%2d] %-24s %s%n",
+                i + 1, dept.getDisplayName(), departmentDescription(dept));
+        }
+        return depts[input.readIntInRange("\n  Department : ", 1, depts.length) - 1];
+    }
+
+    private Department recommendDepartment(String rawKeyword) {
+        String keyword = rawKeyword.toLowerCase();
+        Department best = Department.GENERAL_MEDICINE;
+        int bestScore = 0;
+
+        for (Department dept : Department.values()) {
+            int score = keywordScore(keyword, dept.getDisplayName())
+                + keywordScore(keyword, departmentDescription(dept))
+                + keywordScore(keyword, departmentKeywords(dept));
+            if (score > bestScore) {
+                bestScore = score;
+                best = dept;
+            }
+        }
+
+        for (Doctor doctor : store.doctors.values()) {
+            int score = keywordScore(keyword, doctor.getSpecialization())
+                + keywordScore(keyword, doctor.getDepartment().getDisplayName());
+            if (score > bestScore) {
+                bestScore = score;
+                best = doctor.getDepartment();
+            }
+        }
+
+        return best;
+    }
+
+    private int keywordScore(String keyword, String source) {
+        int score = 0;
+        String normalized = source.toLowerCase();
+        for (String word : keyword.split("\\s+")) {
+            if (word.length() >= 3 && normalized.contains(word)) score++;
+        }
+        return score;
+    }
+
+    private String departmentDescription(Department dept) {
+        return switch (dept) {
+            case CARDIOLOGY -> "Heart, chest pain, blood pressure, and circulation concerns.";
+            case PEDIATRICS -> "Medical care for infants, children, and teens.";
+            case ORTHOPEDICS -> "Bones, joints, muscles, back pain, sprains, and injuries.";
+            case NEUROLOGY -> "Brain, nerves, headaches, seizures, numbness, and dizziness.";
+            case DERMATOLOGY -> "Skin, hair, nails, rashes, acne, itching, and moles.";
+            case OPHTHALMOLOGY -> "Eyes, vision changes, eye pain, redness, and retina concerns.";
+            case GENERAL_MEDICINE -> "General symptoms, check-ups, unclear concerns, and first evaluation.";
+            case OBSTETRICS -> "Pregnancy, menstrual concerns, and reproductive health.";
+            case ONCOLOGY -> "Cancer screening, tumors, chemotherapy, and cancer care.";
+            case PSYCHIATRY -> "Mood, anxiety, stress, sleep, behavior, and mental health.";
+            case PULMONOLOGY -> "Lungs, breathing difficulty, cough, asthma, and chest tightness.";
+            case ENDOCRINOLOGY -> "Diabetes, thyroid, hormones, metabolism, and weight-related concerns.";
+        };
+    }
+
+    private String departmentKeywords(Department dept) {
+        return switch (dept) {
+            case CARDIOLOGY -> "heart chest pain palpitation blood pressure hypertension circulation";
+            case PEDIATRICS -> "child children baby infant teen fever vaccination pediatric";
+            case ORTHOPEDICS -> "bone joint muscle back knee shoulder sprain fracture injury";
+            case NEUROLOGY -> "headache migraine seizure numb dizziness stroke nerve brain";
+            case DERMATOLOGY -> "skin rash acne itch mole hair nail allergy eczema";
+            case OPHTHALMOLOGY -> "eye vision blurry redness retina glasses pain";
+            case GENERAL_MEDICINE -> "not sure general fever cough checkup pain common illness";
+            case OBSTETRICS -> "pregnancy menstrual period ovary reproductive prenatal gynecology";
+            case ONCOLOGY -> "cancer tumor chemotherapy lump screening oncology";
+            case PSYCHIATRY -> "anxiety depression stress sleep mental mood behavior panic";
+            case PULMONOLOGY -> "lung breathing asthma cough shortness breath chest tightness pneumonia";
+            case ENDOCRINOLOGY -> "diabetes thyroid hormone metabolism weight sugar endocrine";
+        };
+    }
+
     /** Doctor selection list prompt. Returns null on cancel. */
     public Doctor promptDoctorSelect() {
-        List<Doctor> docs = new ArrayList<>(store.doctors.values());
+        return promptDoctorSelect(new ArrayList<>(store.doctors.values()), "Select Doctor");
+    }
+
+    private Doctor promptDoctorSelect(List<Doctor> docs, String title) {
+        Console.section(title);
         System.out.println();
-        System.out.printf("  %-4s %-6s %-22s %-28s %-12s %s%n",
-            "#", "ID", "Name", "Department", "Schedule", "Exp");
-        System.out.println("  " + "-".repeat(86));
+        System.out.printf("  %-4s %-6s %-18s %-20s %-22s %-13s %-15s %s%n",
+            "#", "ID", "Name", "Department", "Specialization", "Schedule", "Slots", "Expertise");
+        System.out.println("  " + "-".repeat(140));
         for (int i = 0; i < docs.size(); i++)
-            System.out.println(docs.get(i).toListEntry(i + 1));
-        System.out.println("  " + "-".repeat(86));
+            System.out.println(toGuidedDoctorRow(docs.get(i), i + 1));
+        System.out.println("  " + "-".repeat(140));
         System.out.println("   0 | Cancel");
 
         int choice = input.readIntInRange("\n  Select doctor : ", 0, docs.size());
         if (choice == 0) { Console.info("Cancelled."); return null; }
         return docs.get(choice - 1);
+    }
+
+    private String toGuidedDoctorRow(Doctor doctor, int index) {
+        return String.format("  %2d | %-5s | Dr. %-14s | %-20s | %-22s | %-13s | %-15s %s",
+            index,
+            doctor.getDoctorId(),
+            doctor.getName(),
+            fit(doctor.getDepartment().getDisplayName(), 20),
+            fit(doctor.getSpecialization(), 22),
+            fit(doctor.getSchedule(), 13),
+            fit(slotSummary(doctor), 15),
+            fit(departmentDescription(doctor.getDepartment()), 34));
+    }
+
+    private String slotSummary(Doctor doctor) {
+        return "DEFAULT".equals(doctor.getAvailableSlots())
+            ? "Standard hours"
+            : doctor.getAvailableSlots();
+    }
+
+    private String fit(String value, int max) {
+        if (value.length() <= max) return value;
+        return value.substring(0, Math.max(0, max - 3)) + "...";
+    }
+
+    private static class ConcernOption {
+        private final String label;
+        private final Department department;
+
+        ConcernOption(String label, Department department) {
+            this.label = label;
+            this.department = department;
+        }
     }
 
     /** Time slot selection. Returns null when no slots free or user cancels. */
@@ -709,13 +893,13 @@ public class AppointmentService {
 
         // Create walk-in
         Console.section("New Walk-in Patient");
-        String name      = input.readString("  Full Name          : ");
-        int    age       = input.readPositiveInt("  Age               : ");
+        String name      = input.readFullName("  Full Name          : ");
+        int    age       = input.readAge     ("  Age               : ");
         String address   = input.readString("  Address            : ");
         String contact   = input.readContact("  Contact Number     : ");
         String email     = input.readEmail  ("  Email (optional)   : ");
         String blood     = input.readBloodType("  Blood Type (opt)   : ");
-        String emergency = input.readString("  Emergency Contact  : ");
+        String emergency = input.readContact("  Emergency Contact Number : ");
 
         String pid = store.ids.nextPatientId();
         Patient p  = new Patient(pid, "", name, age, address, contact, email, blood, emergency, DateUtils.now());

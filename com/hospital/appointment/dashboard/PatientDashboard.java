@@ -81,10 +81,10 @@ public class PatientDashboard {
         System.out.println("  Press Enter to keep any field unchanged.");
         System.out.println();
 
-        String name    = input.readOptional("  Full Name          : ");
+        String name    = input.readOptionalFullName("  Full Name          : ");
         String address = input.readOptional("  Address            : ");
-        String contact = input.readOptional("  Contact Number     : ");
-        String email   = input.readOptional("  Email              : ");
+        String contact = input.readOptionalContact ("  Contact Number     : ");
+        String email   = input.readOptionalEmail   ("  Email              : ");
 
         if (!name.isEmpty())    patient.setName(name);
         if (!address.isEmpty()) patient.setAddress(address);

@@ -82,13 +82,13 @@ public class AuthService {
         }
 
         Console.section("Personal Information");
-        String name      = input.readString   ("  Full Name          : ");
-        int    age       = input.readPositiveInt("  Age               : ");
+        String name      = input.readFullName ("  Full Name          : ");
+        int    age       = input.readAge      ("  Age               : ");
         String address   = input.readString   ("  Address            : ");
         String contact   = input.readContact  ("  Contact Number     : ");
         String email     = input.readEmail    ("  Email (optional)   : ");
         String blood     = input.readBloodType("  Blood Type (opt)   : ");
-        String emergency = input.readString   ("  Emergency Contact  : ");
+        String emergency = input.readContact  ("  Emergency Contact Number : ");
 
         // Create accounts
         String ts        = DateUtils.now();
