@@ -8,6 +8,7 @@ import com.hospital.appointment.util.*;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.Objects;
@@ -359,6 +360,11 @@ public class AppointmentService {
         if (doctor == null) return;
 
         String date  = promptDoctorAvailableDate(doctor, "  Preferred Date (yyyy-MM-dd) : ");
+        if (!hasFutureSlotForDate(doctor, date)) {
+            Console.warn("Cannot join waitlist because there are no remaining future slots for Dr. " +
+                doctor.getName() + " on " + DateUtils.pretty(date) + ".");
+            return;
+        }
         String notes = input.readOptional  ("  Notes (optional)            : ");
 
         long count = store.waitlist.stream()
@@ -944,6 +950,25 @@ public class AppointmentService {
             .collect(Collectors.joining(";"));
     }
 
+    private boolean hasFutureSlotForDate(Doctor doctor, String date) {
+        return getAvailableSlotsForDate(doctor, date).stream()
+            .anyMatch(slot -> !isPastSlot(date, slot));
+    }
+
+    private boolean isPastSlot(String date, String slot) {
+        LocalDate parsedDate = DateUtils.parseDate(date);
+        if (parsedDate == null || !parsedDate.equals(LocalDate.now())) return false;
+
+        LocalTime slotTime;
+        try {
+            slotTime = LocalTime.parse(slot);
+        } catch (Exception e) {
+            return false;
+        }
+
+        return slotTime.isBefore(LocalTime.now());
+    }
+
     /** Time slot selection. Returns null when no slots free or user cancels. */
     private String promptSlotSelect(Doctor doctor, String date) {
         if (!isDoctorAvailableOnDate(doctor, date)) {
@@ -971,10 +996,14 @@ public class AppointmentService {
             doctor.getName(), DateUtils.pretty(date));
         System.out.println("  " + "-".repeat(48));
         int freeIndex = 1;
+        boolean hasPastSlot = false;
         Map<Integer, String> selectable = new LinkedHashMap<>();
         for (String slot : allSlots) {
             if (taken.contains(slot)) {
                 System.out.printf("      %s  [RESERVED]%n", slot);
+            } else if (isPastSlot(date, slot)) {
+                hasPastSlot = true;
+                System.out.printf("      %s  [UNAVAILABLE - PAST]%n", slot);
             } else {
                 selectable.put(freeIndex, slot);
                 System.out.printf("  [%d] %s  [FREE]%n", freeIndex, slot);
@@ -983,6 +1012,7 @@ public class AppointmentService {
         }
         System.out.println("  [0] Cancel / Join Waitlist");
         System.out.println("  " + "-".repeat(48));
+        if (hasPastSlot) Console.warn("Selected time has already passed.");
 
         if (selectable.isEmpty()) return null;
 
@@ -1008,6 +1038,11 @@ public class AppointmentService {
                 " is not available on " + DateUtils.pretty(date) + " (" + dayName(date) + ").");
             return;
         }
+        if (!hasFutureSlotForDate(doctor, date)) {
+            Console.warn("Cannot join waitlist because there are no remaining future slots for Dr. " +
+                doctor.getName() + " on " + DateUtils.pretty(date) + ".");
+            return;
+        }
 
         long count = store.waitlist.stream()
             .filter(w -> w.getDoctorId().equals(doctor.getDoctorId())
@@ -1030,6 +1065,8 @@ public class AppointmentService {
 
     /** Auto-promote top waitlist entry when a slot is freed. */
     private void autoPromote(String doctorId, String date, String freedSlot) {
+        if (isPastSlot(date, freedSlot)) return;
+
         WaitlistEntry next = store.waitlist.stream()
             .filter(w -> w.getDoctorId().equals(doctorId)
                       && w.getPreferredDate().equals(date)
