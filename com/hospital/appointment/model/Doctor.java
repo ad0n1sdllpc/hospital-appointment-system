@@ -15,7 +15,7 @@ public class Doctor {
     private String     specialization;
     private int        yearsOfExperience;
     private String     schedule;          // e.g. "Mon-Fri"
-    private String     availableSlots;    // comma-separated custom override (or "DEFAULT")
+    private String     availableSlots;    // date-specific slots, legacy comma list, or "DEFAULT"
 
     public Doctor(String doctorId, String userId, String name, Department department,
                   String specialization, int yearsOfExperience,

@@ -26,6 +26,8 @@ public class AppointmentService {
     );
 
     private static final int WAITLIST_MAX = 5;
+    private static final String DATE_SLOTS_PREFIX = "DATES:";
+    private static final String NO_SLOTS = "NONE";
 
     private static final ConcernOption[] CONCERN_OPTIONS = {
         new ConcernOption("Chest pain, palpitations, high blood pressure", Department.CARDIOLOGY),
@@ -521,37 +523,48 @@ public class AppointmentService {
     // =========================================================================
 
     public void setDoctorSlots(Doctor doctor) {
-        Console.header("SET AVAILABLE TIME SLOTS");
+        Console.header("SET DATE-SPECIFIC TIME SLOTS");
+        Console.fieldLine("  Doctor", "Dr. " + doctor.getName());
+        Console.fieldLine("  Schedule", doctor.getSchedule());
+        System.out.println();
+        String date = promptDoctorAvailableDate(doctor, "  Date to configure (yyyy-MM-dd) : ");
+        Map<String, List<String>> dateSlots = parseDateSlotMap(doctor.getAvailableSlots());
+        List<String> currentSlots = dateSlots.containsKey(date)
+            ? dateSlots.get(date)
+            : getAvailableSlotsForDate(doctor, date);
 
-        System.out.println("  Current slots: " + doctor.getAvailableSlots());
+        Console.fieldLine("  Selected Date", DateUtils.pretty(date) + " (" + dayName(date) + ")");
+        Console.fieldLine("  Current slots", currentSlots.isEmpty() ? "None configured" : String.join(", ", currentSlots));
         System.out.println();
         System.out.println("  Default system slots:");
         for (int i = 0; i < DEFAULT_SLOTS.size(); i++)
             System.out.printf("  [%d] %s%n", i + 1, DEFAULT_SLOTS.get(i));
 
         System.out.println();
-        System.out.println("  Enter the slot numbers you want to be available,");
-        System.out.println("  separated by commas (e.g. 1,2,3,5) or press Enter for all:");
+        System.out.println("  Enter slot numbers for this date only, separated by commas (e.g. 1,2,3,5).");
+        System.out.println("  Press Enter for all default slots on this date, or type none to mark unavailable:");
         String raw = input.readOptional("  > ");
 
-        if (raw.isEmpty()) {
-            doctor.setAvailableSlots("DEFAULT");
+        if (raw.equalsIgnoreCase("none")) {
+            dateSlots.put(date, Collections.emptyList());
+        } else if (raw.isEmpty()) {
+            dateSlots.put(date, new ArrayList<>(DEFAULT_SLOTS));
         } else {
-            StringBuilder sb = new StringBuilder();
+            List<String> selectedSlots = new ArrayList<>();
             for (String tok : raw.split(",")) {
                 try {
                     int idx = Integer.parseInt(tok.trim()) - 1;
                     if (idx >= 0 && idx < DEFAULT_SLOTS.size()) {
-                        if (sb.length() > 0) sb.append(",");
-                        sb.append(DEFAULT_SLOTS.get(idx));
+                        selectedSlots.add(DEFAULT_SLOTS.get(idx));
                     }
                 } catch (NumberFormatException ignored) {}
             }
-            doctor.setAvailableSlots(sb.length() > 0 ? sb.toString() : "DEFAULT");
+            dateSlots.put(date, selectedSlots);
         }
 
+        doctor.setAvailableSlots(encodeDateSlotMap(dateSlots));
         store.saveDoctors();
-        Console.success("Available slots updated: " + doctor.getAvailableSlots());
+        Console.success("Available slots updated for " + DateUtils.pretty(date) + " only.");
     }
 
     // =========================================================================
@@ -768,9 +781,10 @@ public class AppointmentService {
     }
 
     private String slotSummary(Doctor doctor) {
+        if (usesDateSpecificSlots(doctor.getAvailableSlots())) return "By date";
         return "DEFAULT".equals(doctor.getAvailableSlots())
             ? "Standard hours"
-            : doctor.getAvailableSlots();
+            : "Custom template";
     }
 
     private String fit(String value, int max) {
@@ -871,6 +885,65 @@ public class AppointmentService {
         return day.substring(0, 1).toUpperCase() + day.substring(1);
     }
 
+    private List<String> getAvailableSlotsForDate(Doctor doctor, String date) {
+        String savedSlots = doctor.getAvailableSlots();
+        if (!isDoctorAvailableOnDate(doctor, date)) return Collections.emptyList();
+
+        Map<String, List<String>> dateSlots = parseDateSlotMap(savedSlots);
+        if (dateSlots.containsKey(date)) return dateSlots.get(date);
+
+        if (usesDateSpecificSlots(savedSlots)) return Collections.emptyList();
+        if ("DEFAULT".equals(savedSlots)) return DEFAULT_SLOTS;
+        if (savedSlots == null || savedSlots.trim().isEmpty()) return Collections.emptyList();
+
+        return Arrays.stream(savedSlots.split(","))
+            .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .collect(Collectors.toList());
+    }
+
+    private boolean usesDateSpecificSlots(String savedSlots) {
+        return savedSlots != null && savedSlots.startsWith(DATE_SLOTS_PREFIX);
+    }
+
+    private Map<String, List<String>> parseDateSlotMap(String savedSlots) {
+        Map<String, List<String>> dateSlots = new TreeMap<>();
+        if (!usesDateSpecificSlots(savedSlots)) return dateSlots;
+
+        String body = savedSlots.substring(DATE_SLOTS_PREFIX.length());
+        for (String entry : body.split(";")) {
+            if (entry.trim().isEmpty()) continue;
+            String[] parts = entry.split("=", 2);
+            if (parts.length != 2) continue;
+
+            String date = parts[0].trim();
+            if (DateUtils.parseDate(date) == null) continue;
+
+            String rawSlots = parts[1].trim();
+            if (rawSlots.equals(NO_SLOTS)) {
+                dateSlots.put(date, Collections.emptyList());
+                continue;
+            }
+
+            List<String> slots = Arrays.stream(rawSlots.split(","))
+                .map(String::trim)
+                .filter(DEFAULT_SLOTS::contains)
+                .distinct()
+                .collect(Collectors.toList());
+            dateSlots.put(date, slots);
+        }
+
+        return dateSlots;
+    }
+
+    private String encodeDateSlotMap(Map<String, List<String>> dateSlots) {
+        if (dateSlots.isEmpty()) return DATE_SLOTS_PREFIX;
+
+        return DATE_SLOTS_PREFIX + dateSlots.entrySet().stream()
+            .map(e -> e.getKey() + "=" + (e.getValue().isEmpty() ? NO_SLOTS : String.join(",", e.getValue())))
+            .collect(Collectors.joining(";"));
+    }
+
     /** Time slot selection. Returns null when no slots free or user cancels. */
     private String promptSlotSelect(Doctor doctor, String date) {
         if (!isDoctorAvailableOnDate(doctor, date)) {
@@ -879,10 +952,7 @@ public class AppointmentService {
             return null;
         }
 
-        // Get doctor's configured slots
-        List<String> allSlots = ("DEFAULT".equals(doctor.getAvailableSlots()))
-            ? DEFAULT_SLOTS
-            : Arrays.asList(doctor.getAvailableSlots().split(","));
+        List<String> allSlots = getAvailableSlotsForDate(doctor, date);
 
         Set<String> taken = store.appointments.stream()
             .filter(a -> a.getDoctorId().equals(doctor.getDoctorId())
@@ -891,23 +961,34 @@ public class AppointmentService {
             .map(Appointment::getTimeSlot)
             .collect(Collectors.toSet());
 
-        List<String> free = allSlots.stream()
-            .filter(s -> !taken.contains(s))
-            .collect(Collectors.toList());
-
-        if (free.isEmpty()) return null;
+        if (allSlots.isEmpty()) {
+            Console.warn("No date-specific time slots are configured for Dr. " +
+                doctor.getName() + " on " + DateUtils.pretty(date) + ".");
+            return null;
+        }
 
         System.out.printf("%n  Available slots — Dr. %s on %s:%n",
             doctor.getName(), DateUtils.pretty(date));
-        System.out.println("  " + "-".repeat(34));
-        for (int i = 0; i < free.size(); i++)
-            System.out.printf("  [%d] %s%n", i + 1, free.get(i));
+        System.out.println("  " + "-".repeat(48));
+        int freeIndex = 1;
+        Map<Integer, String> selectable = new LinkedHashMap<>();
+        for (String slot : allSlots) {
+            if (taken.contains(slot)) {
+                System.out.printf("      %s  [RESERVED]%n", slot);
+            } else {
+                selectable.put(freeIndex, slot);
+                System.out.printf("  [%d] %s  [FREE]%n", freeIndex, slot);
+                freeIndex++;
+            }
+        }
         System.out.println("  [0] Cancel / Join Waitlist");
-        System.out.println("  " + "-".repeat(34));
+        System.out.println("  " + "-".repeat(48));
 
-        int choice = input.readIntInRange("\n  Select slot : ", 0, free.size());
+        if (selectable.isEmpty()) return null;
+
+        int choice = input.readIntInRange("\n  Select slot : ", 0, selectable.size());
         if (choice == 0) { Console.info("No slot selected."); return null; }
-        return free.get(choice - 1);
+        return selectable.get(choice);
     }
 
     /** When slots are full, offer the patient the waitlist. */
