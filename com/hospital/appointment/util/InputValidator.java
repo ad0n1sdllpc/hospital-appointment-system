@@ -38,6 +38,16 @@ public class InputValidator {
         return scanner.nextLine().trim();
     }
 
+    /** Step navigation: 1 = continue, 2 = back, 0 = exit */
+    public int readNavigationChoice(String stepLabel) {
+        System.out.println();
+        System.out.println("  " + stepLabel);
+        System.out.println("  [1] Continue");
+        System.out.println("  [2] Back");
+        System.out.println("  [0] Exit");
+        return readIntInRange("  Choice : ", 0, 2);
+    }
+
     /** Full name: letters, spaces, and hyphens only */
     public String readFullName(String prompt) {
         while (true) {

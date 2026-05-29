@@ -64,7 +64,17 @@ public class AppointmentService {
      *                            non-null = patient mode (patient books for themselves)
      */
     public void bookAppointment(Patient preselectedPatient) {
+        if (System.currentTimeMillis() >= 0) {
+            bookAppointmentNavigable(preselectedPatient);
+            return;
+        }
+
         Console.header("BOOK NEW APPOINTMENT");
+
+        if (preselectedPatient == null) {
+            int nav = input.readNavigationChoice("Booking - Patient");
+            if (nav != 1) { Console.info("Booking cancelled."); return; }
+        }
 
         // ── 1. Resolve patient ────────────────────────────────────────────────
         Patient patient;
@@ -78,16 +88,22 @@ public class AppointmentService {
         }
 
         // ── 2. Select doctor ──────────────────────────────────────────────────
+        int doctorNav = input.readNavigationChoice("Booking - Doctor");
+        if (doctorNav != 1) { Console.info("Booking cancelled."); return; }
         Doctor doctor = preselectedPatient != null
             ? promptGuidedDoctorSelect()
             : promptDoctorSelect();
         if (doctor == null) return;
 
         // ── 3. Select date ────────────────────────────────────────────────────
+        int dateNav = input.readNavigationChoice("Booking - Date");
+        if (dateNav != 1) { Console.info("Booking cancelled."); return; }
         Console.section("Date & Time");
         String date = promptDoctorAvailableDate(doctor, "  Preferred Date (yyyy-MM-dd) : ");
 
         // ── 4. Select time slot ───────────────────────────────────────────────
+        int slotNav = input.readNavigationChoice("Booking - Time Slot");
+        if (slotNav != 1) { Console.info("Booking cancelled."); return; }
         String slot = promptSlotSelect(doctor, date);
         if (slot == null) {
             if (!isDoctorAvailableOnDate(doctor, date)) return;
@@ -96,18 +112,109 @@ public class AppointmentService {
         }
 
         // ── 5. Notes ─────────────────────────────────────────────────────────
+        int notesNav = input.readNavigationChoice("Booking - Notes");
+        if (notesNav != 1) { Console.info("Booking cancelled."); return; }
         String notes = input.readOptional("  Reason / Notes (optional)  : ");
 
         // ── 6. Confirm ────────────────────────────────────────────────────────
         Console.confirmBox(patient.getName(), doctor.getName(),
             doctor.getDepartment().getDisplayName(), date, slot);
 
-        if (!input.readYesNo("  Confirm booking? (y/n) : ")) {
+        int confirmNav = input.readNavigationChoice("Booking - Confirm");
+        if (confirmNav != 1) {
             Console.info("Booking cancelled.");
             return;
         }
 
         // ── 7. Persist ────────────────────────────────────────────────────────
+        debugSlotStates("Before booking - selected slot reserved", doctor, date, slot);
+
+        String ts   = DateUtils.now();
+        String id   = store.ids.nextAppointmentId();
+
+        Appointment appt = new Appointment(id, patient.getPatientId(),
+            doctor.getDoctorId(), date, slot, AppointmentStatus.BOOKED, notes, ts);
+        appt.resolve(patient, doctor);
+
+        store.appointments.add(appt);
+        store.saveAppointments();
+        debugSlotStates("After booking - selected slot booked", doctor, date, slot);
+
+        Console.success("Appointment booked successfully!");
+        Console.fieldLine("  Appointment ID", id);
+        Console.fieldLine("  Patient       ", patient.getName());
+        Console.fieldLine("  Doctor        ", "Dr. " + doctor.getName());
+        Console.fieldLine("  Date & Time   ", DateUtils.pretty(date) + " at " + slot);
+    }
+
+    private void bookAppointmentNavigable(Patient preselectedPatient) {
+        Console.header("BOOK NEW APPOINTMENT");
+
+        Patient patient = preselectedPatient;
+        Doctor doctor = null;
+        String date = "";
+        String slot = "";
+        String notes = "";
+        int firstStep = preselectedPatient == null ? 0 : 1;
+        int step = firstStep;
+
+        if (patient != null) {
+            Console.fieldLine("  Booking for", patient.getName() + " [" + patient.getPatientId() + "]");
+        }
+
+        while (step <= 5) {
+            String label = switch (step) {
+                case 0 -> "Booking - Patient";
+                case 1 -> "Booking - Doctor";
+                case 2 -> "Booking - Date";
+                case 3 -> "Booking - Time Slot";
+                case 4 -> "Booking - Notes";
+                case 5 -> "Booking - Confirm";
+                default -> "Booking";
+            };
+
+            int nav = input.readNavigationChoice(label);
+            if (nav == 0) { Console.info("Booking cancelled."); return; }
+            if (nav == 2) {
+                if (step == firstStep) { Console.info("Booking cancelled."); return; }
+                step--;
+                continue;
+            }
+
+            switch (step) {
+                case 0 -> {
+                    patient = adminPickOrCreatePatient();
+                    if (patient == null) return;
+                }
+                case 1 -> {
+                    doctor = preselectedPatient != null ? promptGuidedDoctorSelect() : promptDoctorSelect();
+                    if (doctor == null) return;
+                    date = "";
+                    slot = "";
+                }
+                case 2 -> {
+                    Console.section("Date & Time");
+                    date = promptDoctorAvailableDate(doctor, "  Preferred Date (yyyy-MM-dd) : ");
+                    slot = "";
+                }
+                case 3 -> {
+                    slot = promptSlotSelect(doctor, date);
+                    if (slot == null) {
+                        if (!isDoctorAvailableOnDate(doctor, date)) return;
+                        offerWaitlist(patient, doctor, date);
+                        return;
+                    }
+                }
+                case 4 -> notes = input.readOptional("  Reason / Notes (optional)  : ");
+                case 5 -> {
+                    Console.confirmBox(patient.getName(), doctor.getName(),
+                        doctor.getDepartment().getDisplayName(), date, slot);
+                    Console.info("Choose Continue to confirm this booking.");
+                }
+            }
+            step++;
+        }
+
         debugSlotStates("Before booking - selected slot reserved", doctor, date, slot);
 
         String ts   = DateUtils.now();

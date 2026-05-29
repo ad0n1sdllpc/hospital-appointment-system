@@ -37,24 +37,49 @@ public class AuthService {
     public boolean login() {
         Console.header("LOGIN");
 
-        String username = input.readString("  Username : ");
-        String password = input.readString("  Password : ");
+        while (true) {
+            String username = "";
+            String password = "";
+            int step = 0;
+            while (step < 2) {
+                int nav = input.readNavigationChoice(step == 0 ? "Login - Username" : "Login - Password");
+                if (nav == 0) { Console.info("Login cancelled."); return false; }
+                if (nav == 2) {
+                    if (step == 0) { Console.info("Login cancelled."); return false; }
+                    step--;
+                    continue;
+                }
 
-        User user = store.findUserByUsername(username);
+                if (step == 0) {
+                    username = input.readString("  Username : ");
+                } else {
+                    password = input.readString("  Password : ");
+                }
+                step++;
+            }
 
-        if (user == null || !user.checkPassword(password)) {
-            Console.error("Invalid username or password. Please try again.");
-            return false;
+            User user = store.findUserByUsername(username);
+
+            if (user == null || !user.checkPassword(password)) {
+                Console.error("Invalid username or password.");
+                System.out.println("  [1] Try Again");
+                System.out.println("  [2] Back");
+                System.out.println("  [0] Exit");
+                int retry = input.readIntInRange("  Choice : ", 0, 2);
+                if (retry == 1) continue;
+                Console.info("Login cancelled.");
+                return false;
+            }
+
+            if (!user.isActive()) {
+                Console.error("This account has been deactivated. Contact the administrator.");
+                return false;
+            }
+
+            currentUser = user;
+            Console.success("Welcome back, " + user.getFullName() + "!  Role: " + user.getRole().getDisplayName());
+            return true;
         }
-
-        if (!user.isActive()) {
-            Console.error("This account has been deactivated. Contact the administrator.");
-            return false;
-        }
-
-        currentUser = user;
-        Console.success("Welcome back, " + user.getFullName() + "!  Role: " + user.getRole().getDisplayName());
-        return true;
     }
 
     // =========================================================================
@@ -68,27 +93,70 @@ public class AuthService {
     public boolean register() {
         Console.header("PATIENT REGISTRATION");
 
-        Console.section("Create Your Account");
-        String username = input.readUsername ("  Choose a Username  : ");
-        if (!store.isUsernameAvailable(username)) {
-            Console.error("Username '" + username + "' is already taken. Please try another.");
-            return false;
-        }
-        String password = input.readPassword ("  Choose a Password  : ");
-        String confirm  = input.readPassword ("  Confirm Password   : ");
-        if (!password.equals(confirm)) {
-            Console.error("Passwords do not match. Registration cancelled.");
-            return false;
-        }
+        String username = "";
+        String password = "";
+        String confirm = "";
+        String name = "";
+        int age = 0;
+        String address = "";
+        String contact = "";
+        String email = "";
+        String blood = "";
+        String emergency = "";
 
-        Console.section("Personal Information");
-        String name      = input.readFullName ("  Full Name          : ");
-        int    age       = input.readAge      ("  Age               : ");
-        String address   = input.readString   ("  Address            : ");
-        String contact   = input.readContact  ("  Contact Number     : ");
-        String email     = input.readEmail    ("  Email (optional)   : ");
-        String blood     = input.readBloodType("  Blood Type (opt)   : ");
-        String emergency = input.readContact  ("  Emergency Contact Number : ");
+        int step = 0;
+        while (step < 10) {
+            if (step == 0) Console.section("Create Your Account");
+            if (step == 3) Console.section("Personal Information");
+
+            String label = switch (step) {
+                case 0 -> "Registration - Username";
+                case 1 -> "Registration - Password";
+                case 2 -> "Registration - Confirm Password";
+                case 3 -> "Registration - Full Name";
+                case 4 -> "Registration - Age";
+                case 5 -> "Registration - Address";
+                case 6 -> "Registration - Contact Number";
+                case 7 -> "Registration - Email";
+                case 8 -> "Registration - Blood Type";
+                case 9 -> "Registration - Emergency Contact Number";
+                default -> "Registration";
+            };
+
+            int nav = input.readNavigationChoice(label);
+            if (nav == 0) { Console.info("Registration cancelled."); return false; }
+            if (nav == 2) {
+                if (step == 0) { Console.info("Registration cancelled."); return false; }
+                step--;
+                continue;
+            }
+
+            switch (step) {
+                case 0 -> {
+                    username = input.readUsername("  Choose a Username  : ");
+                    if (!store.isUsernameAvailable(username)) {
+                        Console.error("Username '" + username + "' is already taken. Please try another.");
+                        continue;
+                    }
+                }
+                case 1 -> password = input.readPassword("  Choose a Password  : ");
+                case 2 -> {
+                    confirm = input.readPassword("  Confirm Password   : ");
+                    if (!password.equals(confirm)) {
+                        Console.error("Passwords do not match. Please try again.");
+                        continue;
+                    }
+                }
+                case 3 -> name = input.readFullName("  Full Name          : ");
+                case 4 -> age = input.readAge("  Age               : ");
+                case 5 -> address = input.readString("  Address            : ");
+                case 6 -> contact = input.readContact("  Contact Number     : ");
+                case 7 -> email = input.readEmail("  Email (optional)   : ");
+                case 8 -> blood = input.readBloodType("  Blood Type (opt)   : ");
+                case 9 -> emergency = input.readContact("  Emergency Contact Number : ");
+            }
+            step++;
+        }
 
         // Create accounts
         String ts        = DateUtils.now();
