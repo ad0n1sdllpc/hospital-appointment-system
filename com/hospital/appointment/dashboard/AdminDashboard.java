@@ -134,7 +134,8 @@ public class AdminDashboard {
 
         User u = new User(userId, username, password,
             UserRole.DOCTOR, docId, "Dr. " + lastName, true, ts);
-        Doctor d = new Doctor(docId, userId, lastName, dept, spec, yrs, sched, "DEFAULT");
+        Doctor d = new Doctor(docId, userId, lastName, dept, spec, yrs, sched,
+            Doctor.EMPTY_DATE_SLOTS);
 
         store.users.add(u);
         store.doctors.put(docId, d);

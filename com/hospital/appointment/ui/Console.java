@@ -80,7 +80,7 @@ public class Console {
         System.out.println("  |  MY APPOINTMENTS                |  MY ACCOUNT                       |");
         System.out.println("  |  [1]  Book New Appointment      |  [5]  Update My Profile           |");
         System.out.println("  |  [2]  My Upcoming Appointments  |  [6]  Change Password             |");
-        System.out.println("  |  [3]  Cancel My Appointment     |                                   |");
+        System.out.println("  |  [3]  Cancel My Appointment     |  [7]  Reschedule Appointment      |");
         System.out.println("  |  [4]  My Appointment History    |  [0]  Logout                      |");
         System.out.println("  |       Join Waitlist -> [1]      |                                   |");
         dashboardFooter();

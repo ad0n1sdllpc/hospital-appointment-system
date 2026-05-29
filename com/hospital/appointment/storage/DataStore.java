@@ -62,9 +62,10 @@ public class DataStore {
             String[] p = split(line, 8);
             if (p == null) continue;
             try {
+                String dateSlots = p[7].startsWith("DATES:") ? p[7] : Doctor.EMPTY_DATE_SLOTS;
                 Doctor d = new Doctor(p[0], p[1], p[2],
                     Department.valueOf(p[3]), p[4],
-                    Integer.parseInt(p[5]), p[6], p[7]);
+                    Integer.parseInt(p[5]), p[6], dateSlots);
                 doctors.put(d.getDoctorId(), d);
                 ids.syncPatient(IdGenerator.seq(d.getDoctorId()));
             } catch (Exception e) { warn("doctors.txt", e); }
@@ -241,7 +242,8 @@ public class DataStore {
             UserRole.DOCTOR, docId, "Dr. " + lastName, true, ts);
         users.add(u);
 
-        Doctor d = new Doctor(docId, userId, lastName, dept, spec, yrs, sched, "DEFAULT");
+        Doctor d = new Doctor(docId, userId, lastName, dept, spec, yrs, sched,
+            Doctor.EMPTY_DATE_SLOTS);
         doctors.put(docId, d);
     }
 

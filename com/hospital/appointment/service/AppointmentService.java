@@ -278,6 +278,58 @@ public class AppointmentService {
         Console.success("Rescheduled to " + DateUtils.pretty(newDate) + " at " + newSlot);
     }
 
+    /** Reschedule restricted to the logged-in patient's own upcoming appointment. */
+    public void reschedulePatientAppointment(String ownerPatientId) {
+        Console.header("RESCHEDULE MY APPOINTMENT");
+
+        String id = input.readString("  Appointment ID : ").toUpperCase();
+        Appointment appt = store.findAppointmentById(id);
+        if (appt == null) { Console.error("Not found: " + id); return; }
+        if (!appt.getPatientId().equals(ownerPatientId)) {
+            Console.error("You can only reschedule your own appointments.");
+            return;
+        }
+        if (appt.getStatus() != AppointmentStatus.BOOKED) {
+            Console.warn("Only booked appointments can be rescheduled.");
+            return;
+        }
+        if (isPastAppointment(appt)) {
+            Console.warn("This appointment has already passed and cannot be rescheduled.");
+            return;
+        }
+
+        Doctor doctor = appt.getDoctor() != null ? appt.getDoctor() : store.doctors.get(appt.getDoctorId());
+        if (doctor == null) {
+            Console.error("Doctor record not found for this appointment.");
+            return;
+        }
+
+        System.out.printf("  Current: %s at %s with Dr. %s%n",
+            DateUtils.pretty(appt.getDate()), appt.getTimeSlot(), doctor.getName());
+        Console.info("Patients can reschedule the date and time, but the doctor stays the same.");
+
+        String newDate = promptDoctorAvailableDate(doctor, "  New Date (yyyy-MM-dd)        : ");
+        String newSlot = promptSlotSelect(doctor, newDate);
+        if (newSlot == null) { Console.warn("No available slots. Reschedule aborted."); return; }
+
+        Patient patient = appt.getPatient() != null ? appt.getPatient() : store.patients.get(ownerPatientId);
+        String patientName = patient != null ? patient.getName() : ownerPatientId;
+
+        Console.confirmBox(patientName, doctor.getName(),
+            doctor.getDepartment().getDisplayName(), newDate, newSlot);
+        if (!input.readYesNo("  Confirm reschedule? (y/n) : ")) {
+            Console.info("Reschedule cancelled.");
+            return;
+        }
+
+        appt.setDate(newDate);
+        appt.setTimeSlot(newSlot);
+        appt.setDoctor(doctor);
+
+        store.saveAppointments();
+        Console.success("Rescheduled to " + DateUtils.pretty(newDate) + " at " + newSlot);
+    }
+
     // =========================================================================
     // SEARCH & FILTER
     // =========================================================================
@@ -425,13 +477,15 @@ public class AppointmentService {
     }
 
     private void printDoctorDayView(Doctor doctor, String date) {
+        List<String> configuredSlots = getAvailableSlotsForDate(doctor, date);
         Map<String, Appointment> slotMap = new LinkedHashMap<>();
-        for (String s : DEFAULT_SLOTS) slotMap.put(s, null);
+        for (String s : configuredSlots) slotMap.put(s, null);
 
         for (Appointment a : store.appointments) {
             if (a.getDoctorId().equals(doctor.getDoctorId())
                 && a.getDate().equals(date)
                 && a.getStatus() != AppointmentStatus.CANCELLED) {
+                slotMap.putIfAbsent(a.getTimeSlot(), a);
                 slotMap.put(a.getTimeSlot(), a);
             }
         }
@@ -441,6 +495,10 @@ public class AppointmentService {
         System.out.println("  " + "-".repeat(60));
         System.out.printf("  %-8s  %-10s  %-24s  %s%n", "Time", "Status", "Patient", "Appt ID");
         System.out.println("  " + "-".repeat(60));
+
+        if (configuredSlots.isEmpty()) {
+            System.out.println("  No date-specific slots configured for this date.");
+        }
 
         for (Map.Entry<String, Appointment> e : slotMap.entrySet()) {
             if (e.getValue() == null) {
@@ -787,10 +845,7 @@ public class AppointmentService {
     }
 
     private String slotSummary(Doctor doctor) {
-        if (usesDateSpecificSlots(doctor.getAvailableSlots())) return "By date";
-        return "DEFAULT".equals(doctor.getAvailableSlots())
-            ? "Standard hours"
-            : "Custom template";
+        return "By date";
     }
 
     private String fit(String value, int max) {
@@ -898,14 +953,7 @@ public class AppointmentService {
         Map<String, List<String>> dateSlots = parseDateSlotMap(savedSlots);
         if (dateSlots.containsKey(date)) return dateSlots.get(date);
 
-        if (usesDateSpecificSlots(savedSlots)) return Collections.emptyList();
-        if ("DEFAULT".equals(savedSlots)) return DEFAULT_SLOTS;
-        if (savedSlots == null || savedSlots.trim().isEmpty()) return Collections.emptyList();
-
-        return Arrays.stream(savedSlots.split(","))
-            .map(String::trim)
-            .filter(s -> !s.isEmpty())
-            .collect(Collectors.toList());
+        return Collections.emptyList();
     }
 
     private boolean usesDateSpecificSlots(String savedSlots) {
@@ -967,6 +1015,14 @@ public class AppointmentService {
         }
 
         return slotTime.isBefore(LocalTime.now());
+    }
+
+    private boolean isPastAppointment(Appointment appt) {
+        LocalDate apptDate = DateUtils.parseDate(appt.getDate());
+        if (apptDate == null) return true;
+        if (apptDate.isBefore(LocalDate.now())) return true;
+        if (apptDate.isAfter(LocalDate.now())) return false;
+        return isPastSlot(appt.getDate(), appt.getTimeSlot());
     }
 
     /** Time slot selection. Returns null when no slots free or user cancels. */

@@ -1,12 +1,12 @@
-D-01|USR-002|Santos|CARDIOLOGY|Interventional Cardiology|18|Mon-Fri|DEFAULT
-D-02|USR-003|Reyes|PEDIATRICS|Neonatology|12|Mon-Sat|DEFAULT
-D-03|USR-004|Cruz|ORTHOPEDICS|Sports Medicine|15|Tue-Sat|DEFAULT
-D-04|USR-005|Garcia|NEUROLOGY|Stroke & Epilepsy|20|Mon-Fri|DEFAULT
-D-05|USR-006|Mendoza|DERMATOLOGY|Cosmetic Dermatology|9|Mon-Fri|DEFAULT
-D-06|USR-007|Torres|OPHTHALMOLOGY|Retina Specialist|14|Mon-Thu|DEFAULT
-D-07|USR-008|Villanueva|GENERAL_MEDICINE|Family Medicine|11|Mon-Sun|DEFAULT
-D-08|USR-009|Aquino|OBSTETRICS|Maternal-Fetal Medicine|16|Mon-Fri|DEFAULT
-D-09|USR-010|Bautista|ONCOLOGY|Medical Oncology|22|Mon-Fri|DEFAULT
-D-10|USR-011|Lim|PSYCHIATRY|Clinical Psychology|10|Mon-Fri|DEFAULT
-D-11|USR-012|Ramos|PULMONOLOGY|Critical Care|17|Mon-Sat|DEFAULT
-D-12|USR-013|DelaCreuz|ENDOCRINOLOGY|Diabetes & Metabolism|13|Mon-Fri|DEFAULT
+D-01|USR-002|Santos|CARDIOLOGY|Interventional Cardiology|18|Mon-Fri|DATES:
+D-02|USR-003|Reyes|PEDIATRICS|Neonatology|12|Mon-Sat|DATES:
+D-03|USR-004|Cruz|ORTHOPEDICS|Sports Medicine|15|Tue-Sat|DATES:
+D-04|USR-005|Garcia|NEUROLOGY|Stroke & Epilepsy|20|Mon-Fri|DATES:
+D-05|USR-006|Mendoza|DERMATOLOGY|Cosmetic Dermatology|9|Mon-Fri|DATES:
+D-06|USR-007|Torres|OPHTHALMOLOGY|Retina Specialist|14|Mon-Thu|DATES:
+D-07|USR-008|Villanueva|GENERAL_MEDICINE|Family Medicine|11|Mon-Sun|DATES:
+D-08|USR-009|Aquino|OBSTETRICS|Maternal-Fetal Medicine|16|Mon-Fri|DATES:
+D-09|USR-010|Bautista|ONCOLOGY|Medical Oncology|22|Mon-Fri|DATES:
+D-10|USR-011|Lim|PSYCHIATRY|Clinical Psychology|10|Mon-Fri|DATES:
+D-11|USR-012|Ramos|PULMONOLOGY|Critical Care|17|Mon-Sat|DATES:
+D-12|USR-013|DelaCreuz|ENDOCRINOLOGY|Diabetes & Metabolism|13|Mon-Fri|DATES:

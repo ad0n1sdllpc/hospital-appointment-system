@@ -17,6 +17,7 @@ import com.hospital.appointment.util.*;
  *   [4] My Appointment History
  *   [5] Update My Profile
  *   [6] Change Password
+ *   [7] Reschedule My Appointment
  */
 public class PatientDashboard {
 
@@ -47,7 +48,7 @@ public class PatientDashboard {
         boolean running = true;
         while (running) {
             Console.patientDashboard(user.getFullName());
-            int choice = input.readIntInRange("  Your choice : ", 0, 6);
+            int choice = input.readIntInRange("  Your choice : ", 0, 7);
             System.out.println();
 
             switch (choice) {
@@ -57,6 +58,7 @@ public class PatientDashboard {
                 case 4 -> apptSvc.viewPatientAppointments(patient.getPatientId(), false);
                 case 5 -> updateProfile();
                 case 6 -> auth.changePassword();
+                case 7 -> apptSvc.reschedulePatientAppointment(patient.getPatientId());
                 case 0 -> running = false;
                 default -> Console.warn("Invalid choice.");
             }

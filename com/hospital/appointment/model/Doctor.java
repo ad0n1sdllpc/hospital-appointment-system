@@ -8,6 +8,8 @@ import com.hospital.appointment.enums.Department;
  */
 public class Doctor {
 
+    public static final String EMPTY_DATE_SLOTS = "DATES:";
+
     private String     doctorId;          // D-01
     private String     userId;            // Links to User account
     private String     name;
@@ -15,7 +17,7 @@ public class Doctor {
     private String     specialization;
     private int        yearsOfExperience;
     private String     schedule;          // e.g. "Mon-Fri"
-    private String     availableSlots;    // date-specific slots, legacy comma list, or "DEFAULT"
+    private String     availableSlots;    // date-specific slots only: DATES:yyyy-MM-dd=HH:MM,...
 
     public Doctor(String doctorId, String userId, String name, Department department,
                   String specialization, int yearsOfExperience,
