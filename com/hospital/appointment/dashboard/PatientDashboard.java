@@ -47,6 +47,7 @@ public class PatientDashboard {
 
         boolean running = true;
         while (running) {
+            boolean pauseAfterAction = true;
             try {
                 Console.patientDashboard(user.getFullName());
                 int choice = input.readIntInRange("  Your choice : ", 0, 7);
@@ -60,13 +61,17 @@ public class PatientDashboard {
                     case 5 -> updateProfile();
                     case 6 -> auth.changePassword();
                     case 7 -> apptSvc.reschedulePatientAppointment(patient.getPatientId());
-                    case 0 -> running = false;
+                    case 0 -> {
+                        pauseAfterAction = false;
+                        running = false;
+                    }
                     default -> Console.warn("Invalid choice.");
                 }
             } catch (InputValidator.ExitException | InputValidator.BackException e) {
+                pauseAfterAction = false;
                 Console.info("Returning to patient dashboard.");
             }
-            if (running) Console.pause(scanner);
+            if (running && pauseAfterAction) Console.pause(scanner);
         }
     }
 

@@ -103,28 +103,32 @@ public class Main {
                                           InputValidator input, Scanner scanner) {
         User user = auth.getCurrentUser();
 
-        try {
-            switch (user.getRole()) {
+        boolean dashboardRunning = true;
+        while (dashboardRunning) {
+            try {
+                switch (user.getRole()) {
 
-                case ADMIN -> {
-                    AdminDashboard admin = new AdminDashboard(store, apptSvc, input, user);
-                    admin.run(scanner);
+                    case ADMIN -> {
+                        AdminDashboard admin = new AdminDashboard(store, apptSvc, input, user);
+                        admin.run(scanner);
+                    }
+
+                    case DOCTOR -> {
+                        DoctorDashboard doctor = new DoctorDashboard(store, apptSvc, input, user);
+                        doctor.run(scanner);
+                    }
+
+                    case PATIENT -> {
+                        PatientDashboard patient = new PatientDashboard(store, apptSvc, input, auth, user);
+                        patient.run(scanner);
+                    }
+
+                    default -> Console.error("Unknown role: " + user.getRole() + ". Contact system admin.");
                 }
-
-                case DOCTOR -> {
-                    DoctorDashboard doctor = new DoctorDashboard(store, apptSvc, input, user);
-                    doctor.run(scanner);
-                }
-
-                case PATIENT -> {
-                    PatientDashboard patient = new PatientDashboard(store, apptSvc, input, auth, user);
-                    patient.run(scanner);
-                }
-
-                default -> Console.error("Unknown role: " + user.getRole() + ". Contact system admin.");
+                dashboardRunning = false;
+            } catch (InputValidator.ExitException | InputValidator.BackException e) {
+                Console.info("Returning to dashboard.");
             }
-        } catch (InputValidator.ExitException | InputValidator.BackException e) {
-            Console.info("Returning to dashboard.");
         }
 
         auth.logout();

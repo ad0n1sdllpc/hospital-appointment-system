@@ -43,6 +43,7 @@ public class DoctorDashboard {
 
         boolean running = true;
         while (running) {
+            boolean pauseAfterAction = true;
             try {
                 Console.doctorDashboard(doctor.getName());
                 int choice = input.readIntInRange("  Your choice : ", 0, 6);
@@ -55,13 +56,17 @@ public class DoctorDashboard {
                     case 4 -> apptSvc.setDoctorSlots(doctor);
                     case 5 -> apptSvc.viewPatientRecord(doctor.getDoctorId());
                     case 6 -> apptSvc.viewDetail();
-                    case 0 -> running = false;
+                    case 0 -> {
+                        pauseAfterAction = false;
+                        running = false;
+                    }
                     default -> Console.warn("Invalid choice.");
                 }
             } catch (InputValidator.ExitException | InputValidator.BackException e) {
+                pauseAfterAction = false;
                 Console.info("Returning to doctor dashboard.");
             }
-            if (running) Console.pause(scanner);
+            if (running && pauseAfterAction) Console.pause(scanner);
         }
     }
 }

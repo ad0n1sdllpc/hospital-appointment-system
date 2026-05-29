@@ -38,6 +38,8 @@ public class AdminDashboard {
     public void run(java.util.Scanner scanner) {
         boolean running = true;
         while (running) {
+            boolean pauseAfterAction = true;
+            try {
             Console.adminDashboard(admin.getFullName());
             int choice = input.readIntInRange("  Your choice : ", 0, 15);
             System.out.println();
@@ -62,10 +64,17 @@ public class AdminDashboard {
                 case 14 -> apptSvc.filterByStatus();
                 case 15 -> apptSvc.filterByDepartment();
                 // ── Logout ───────────────────────────────────────────────────
-                case 0  -> running = false;
+                case 0  -> {
+                    pauseAfterAction = false;
+                    running = false;
+                }
                 default -> Console.warn("Invalid choice.");
             }
-            if (running) Console.pause(scanner);
+            } catch (InputValidator.ExitException | InputValidator.BackException e) {
+                pauseAfterAction = false;
+                Console.info("Returning to admin dashboard.");
+            }
+            if (running && pauseAfterAction) Console.pause(scanner);
         }
     }
 
