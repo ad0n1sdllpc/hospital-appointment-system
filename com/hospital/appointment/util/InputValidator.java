@@ -56,9 +56,9 @@ public class InputValidator {
             try {
                 int v = Integer.parseInt(scanner.nextLine().trim());
                 if (v >= 0 && v <= 2) return v;
-                Console.warn("Please enter 0, 1, or 2.");
+                Console.warn("Please choose 1, 2, or 0 from the options above.");
             } catch (NumberFormatException e) {
-                Console.warn("Invalid input - please enter a number.");
+                Console.warn("Invalid input - please choose 1, 2, or 0 from the options above.");
             }
         }
     }
@@ -81,12 +81,21 @@ public class InputValidator {
 
     /** Step navigation: 1 = continue, 2 = back, 0 = exit */
     public int readNavigationChoice(String stepLabel) {
-        System.out.println();
-        System.out.println("  " + stepLabel);
-        System.out.println("  [1] Continue");
-        System.out.println("  [2] Back");
-        System.out.println("  [0] Exit");
-        return readIntInRange("  Choice : ", 0, 2);
+        while (true) {
+            System.out.println();
+            System.out.println("  " + stepLabel);
+            System.out.println("  [1] Continue");
+            System.out.println("  [2] Back");
+            System.out.println("  [0] Exit");
+            System.out.print("  Choice : ");
+            try {
+                int v = Integer.parseInt(scanner.nextLine().trim());
+                if (v >= 0 && v <= 2) return v;
+                Console.warn("Please enter 0, 1, or 2.");
+            } catch (NumberFormatException e) {
+                Console.warn("Invalid input - please enter a number.");
+            }
+        }
     }
 
     /** Full name: letters, spaces, and hyphens only */

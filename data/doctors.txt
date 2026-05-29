@@ -8,5 +8,5 @@ D-07|USR-008|Villanueva|GENERAL_MEDICINE|Family Medicine|11|Mon-Sun|DATES:
 D-08|USR-009|Aquino|OBSTETRICS|Maternal-Fetal Medicine|16|Mon-Fri|DATES:
 D-09|USR-010|Bautista|ONCOLOGY|Medical Oncology|22|Mon-Fri|DATES:
 D-10|USR-011|Lim|PSYCHIATRY|Clinical Psychology|10|Mon-Fri|DATES:
-D-11|USR-012|Ramos|PULMONOLOGY|Critical Care|17|Mon-Sat|DATES:
+D-11|USR-012|Ramos|PULMONOLOGY|Critical Care|17|Mon-Sat|DATES:2026-05-29=11:00
 D-12|USR-013|DelaCreuz|ENDOCRINOLOGY|Diabetes & Metabolism|13|Mon-Fri|DATES:
