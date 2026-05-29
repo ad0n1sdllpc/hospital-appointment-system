@@ -22,13 +22,54 @@ public class InputValidator {
         this.scanner = scanner;
     }
 
+    public static class NavigationException extends RuntimeException {
+        private final boolean exit;
+
+        NavigationException(boolean exit) {
+            this.exit = exit;
+        }
+
+        public boolean isExit() { return exit; }
+    }
+
+    public static class BackException extends NavigationException {
+        public BackException() { super(false); }
+    }
+
+    public static class ExitException extends NavigationException {
+        public ExitException() { super(true); }
+    }
+
+    private void handleInputError(String message) {
+        Console.warn(message);
+        System.out.println("  [1] Retry");
+        System.out.println("  [2] Back");
+        System.out.println("  [0] Exit");
+        int choice = readRecoveryChoice("  Choice : ");
+        if (choice == 2) throw new BackException();
+        if (choice == 0) throw new ExitException();
+    }
+
+    private int readRecoveryChoice(String prompt) {
+        while (true) {
+            System.out.print(prompt);
+            try {
+                int v = Integer.parseInt(scanner.nextLine().trim());
+                if (v >= 0 && v <= 2) return v;
+                Console.warn("Please enter 0, 1, or 2.");
+            } catch (NumberFormatException e) {
+                Console.warn("Invalid input - please enter a number.");
+            }
+        }
+    }
+
     /** Non-blank string */
     public String readString(String prompt) {
         while (true) {
             System.out.print(prompt);
             String v = scanner.nextLine().trim();
             if (!v.isEmpty()) return v;
-            Console.warn("Input cannot be blank.");
+            handleInputError("Input cannot be blank.");
         }
     }
 
@@ -54,7 +95,7 @@ public class InputValidator {
             System.out.print(prompt);
             String input = scanner.nextLine().trim();
             if (input.matches(FULL_NAME_REGEX)) return input;
-            Console.warn("Full name must use letters, spaces, and hyphens only.");
+            handleInputError("Full name must use letters, spaces, and hyphens only.");
         }
     }
 
@@ -64,7 +105,7 @@ public class InputValidator {
             System.out.print(prompt);
             String input = scanner.nextLine().trim();
             if (input.isEmpty() || input.matches(FULL_NAME_REGEX)) return input;
-            Console.warn("Full name must use letters, spaces, and hyphens only.");
+            handleInputError("Full name must use letters, spaces, and hyphens only.");
         }
     }
 
@@ -75,9 +116,9 @@ public class InputValidator {
             try {
                 int v = Integer.parseInt(scanner.nextLine().trim());
                 if (v > 0) return v;
-                Console.warn("Value must be greater than zero.");
+                handleInputError("Value must be greater than zero.");
             } catch (NumberFormatException e) {
-                Console.warn("Please enter a valid whole number.");
+                handleInputError("Please enter a valid whole number.");
             }
         }
     }
@@ -94,9 +135,9 @@ public class InputValidator {
             try {
                 int v = Integer.parseInt(scanner.nextLine().trim());
                 if (v >= min && v <= max) return v;
-                Console.warn("Please enter a number between " + min + " and " + max + ".");
+                handleInputError("Please enter a number between " + min + " and " + max + ".");
             } catch (NumberFormatException e) {
-                Console.warn("Invalid input — please enter a number.");
+                handleInputError("Invalid input - please enter a number.");
             }
         }
     }
@@ -107,8 +148,8 @@ public class InputValidator {
             System.out.print(prompt);
             String input = scanner.nextLine().trim();
             LocalDate date = DateUtils.parseDate(input);
-            if (date == null)                         { Console.warn("Use yyyy-MM-dd format, e.g. 2026-06-20."); continue; }
-            if (date.isBefore(LocalDate.now()))       { Console.warn("Cannot select a past date."); continue; }
+            if (date == null)                         { handleInputError("Use yyyy-MM-dd format, e.g. 2026-06-20."); continue; }
+            if (date.isBefore(LocalDate.now()))       { handleInputError("Cannot select a past date."); continue; }
             return input;
         }
     }
@@ -119,7 +160,7 @@ public class InputValidator {
             System.out.print(prompt);
             String input = scanner.nextLine().trim();
             if (DateUtils.parseDate(input) != null) return input;
-            Console.warn("Use yyyy-MM-dd format, e.g. 2026-06-20.");
+            handleInputError("Use yyyy-MM-dd format, e.g. 2026-06-20.");
         }
     }
 
@@ -129,7 +170,7 @@ public class InputValidator {
             System.out.print(prompt);
             String input = scanner.nextLine().trim();
             if (input.matches(CONTACT_REGEX)) return input;
-            Console.warn("Enter a valid Philippine mobile number: 09XX-XXX-XXXX or 09XXXXXXXXX.");
+            handleInputError("Enter a valid Philippine mobile number: 09XX-XXX-XXXX or 09XXXXXXXXX.");
         }
     }
 
@@ -139,7 +180,7 @@ public class InputValidator {
             System.out.print(prompt);
             String input = scanner.nextLine().trim();
             if (input.isEmpty() || input.matches(CONTACT_REGEX)) return input;
-            Console.warn("Enter a valid Philippine mobile number: 09XX-XXX-XXXX or 09XXXXXXXXX.");
+            handleInputError("Enter a valid Philippine mobile number: 09XX-XXX-XXXX or 09XXXXXXXXX.");
         }
     }
 
@@ -149,7 +190,7 @@ public class InputValidator {
             System.out.print(prompt);
             String input = scanner.nextLine().trim();
             if (input.isEmpty() || input.matches(EMAIL_REGEX)) return input;
-            Console.warn("Enter a valid email address, or press Enter to skip.");
+            handleInputError("Enter a valid email address, or press Enter to skip.");
         }
     }
 
@@ -165,7 +206,7 @@ public class InputValidator {
             System.out.print(prompt);
             String input = scanner.nextLine().trim().toUpperCase();
             for (String v : valid) { if (v.equals(input)) return input; }
-            Console.warn("Valid: A+, A-, B+, B-, AB+, AB-, O+, O- (or Enter to skip).");
+            handleInputError("Valid: A+, A-, B+, B-, AB+, AB-, O+, O- (or Enter to skip).");
         }
     }
 
@@ -175,7 +216,7 @@ public class InputValidator {
             System.out.print(prompt);
             String input = scanner.nextLine().trim();
             if (input.matches("[a-zA-Z0-9_]{4,20}")) return input;
-            Console.warn("Username: 4-20 chars, letters/digits/underscore only.");
+            handleInputError("Username: 4-20 chars, letters/digits/underscore only.");
         }
     }
 
@@ -185,7 +226,7 @@ public class InputValidator {
             System.out.print(prompt);
             String input = scanner.nextLine().trim();
             if (input.length() >= 6) return input;
-            Console.warn("Password must be at least 6 characters.");
+            handleInputError("Password must be at least 6 characters.");
         }
     }
 
@@ -196,7 +237,7 @@ public class InputValidator {
             String input = scanner.nextLine().trim().toLowerCase();
             if (input.equals("y") || input.equals("yes")) return true;
             if (input.equals("n") || input.equals("no"))  return false;
-            Console.warn("Please enter y or n.");
+            handleInputError("Please enter y or n.");
         }
     }
 
@@ -205,3 +246,4 @@ public class InputValidator {
         static void warn(String msg) { System.out.println("  [!] " + msg); }
     }
 }
+

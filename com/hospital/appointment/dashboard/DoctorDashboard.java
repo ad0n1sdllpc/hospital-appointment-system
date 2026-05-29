@@ -43,19 +43,23 @@ public class DoctorDashboard {
 
         boolean running = true;
         while (running) {
-            Console.doctorDashboard(doctor.getName());
-            int choice = input.readIntInRange("  Your choice : ", 0, 6);
-            System.out.println();
+            try {
+                Console.doctorDashboard(doctor.getName());
+                int choice = input.readIntInRange("  Your choice : ", 0, 6);
+                System.out.println();
 
-            switch (choice) {
-                case 1 -> apptSvc.viewDoctorAppointments(doctor.getDoctorId(), true);
-                case 2 -> apptSvc.viewMySchedule(doctor);
-                case 3 -> apptSvc.completeAppointment(doctor.getDoctorId());
-                case 4 -> apptSvc.setDoctorSlots(doctor);
-                case 5 -> apptSvc.viewPatientRecord(doctor.getDoctorId());
-                case 6 -> apptSvc.viewDetail();
-                case 0 -> running = false;
-                default -> Console.warn("Invalid choice.");
+                switch (choice) {
+                    case 1 -> apptSvc.viewDoctorAppointments(doctor.getDoctorId(), true);
+                    case 2 -> apptSvc.viewMySchedule(doctor);
+                    case 3 -> apptSvc.completeAppointment(doctor.getDoctorId());
+                    case 4 -> apptSvc.setDoctorSlots(doctor);
+                    case 5 -> apptSvc.viewPatientRecord(doctor.getDoctorId());
+                    case 6 -> apptSvc.viewDetail();
+                    case 0 -> running = false;
+                    default -> Console.warn("Invalid choice.");
+                }
+            } catch (InputValidator.ExitException | InputValidator.BackException e) {
+                Console.info("Returning to doctor dashboard.");
             }
             if (running) Console.pause(scanner);
         }

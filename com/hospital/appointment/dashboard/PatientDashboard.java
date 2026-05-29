@@ -47,20 +47,24 @@ public class PatientDashboard {
 
         boolean running = true;
         while (running) {
-            Console.patientDashboard(user.getFullName());
-            int choice = input.readIntInRange("  Your choice : ", 0, 7);
-            System.out.println();
+            try {
+                Console.patientDashboard(user.getFullName());
+                int choice = input.readIntInRange("  Your choice : ", 0, 7);
+                System.out.println();
 
-            switch (choice) {
-                case 1 -> apptSvc.bookAppointment(patient);
-                case 2 -> apptSvc.viewPatientAppointments(patient.getPatientId(), true);
-                case 3 -> apptSvc.cancelAppointment(patient.getPatientId());
-                case 4 -> apptSvc.viewPatientAppointments(patient.getPatientId(), false);
-                case 5 -> updateProfile();
-                case 6 -> auth.changePassword();
-                case 7 -> apptSvc.reschedulePatientAppointment(patient.getPatientId());
-                case 0 -> running = false;
-                default -> Console.warn("Invalid choice.");
+                switch (choice) {
+                    case 1 -> apptSvc.bookAppointment(patient);
+                    case 2 -> apptSvc.viewPatientAppointments(patient.getPatientId(), true);
+                    case 3 -> apptSvc.cancelAppointment(patient.getPatientId());
+                    case 4 -> apptSvc.viewPatientAppointments(patient.getPatientId(), false);
+                    case 5 -> updateProfile();
+                    case 6 -> auth.changePassword();
+                    case 7 -> apptSvc.reschedulePatientAppointment(patient.getPatientId());
+                    case 0 -> running = false;
+                    default -> Console.warn("Invalid choice.");
+                }
+            } catch (InputValidator.ExitException | InputValidator.BackException e) {
+                Console.info("Returning to patient dashboard.");
             }
             if (running) Console.pause(scanner);
         }

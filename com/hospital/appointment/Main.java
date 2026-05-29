@@ -46,12 +46,13 @@ public class Main {
 
         while (appRunning) {
 
-            // Guest menu: shown when no one is logged in
-            Console.guestMenu();
-            int choice = input.readIntInRange("  Your choice : ", 0, 2);
-            System.out.println();
+            try {
+                // Guest menu: shown when no one is logged in
+                Console.guestMenu();
+                int choice = input.readIntInRange("  Your choice : ", 0, 2);
+                System.out.println();
 
-            switch (choice) {
+                switch (choice) {
 
                 // ── [1] Login ─────────────────────────────────────────────────
                 case 1 -> {
@@ -79,6 +80,9 @@ public class Main {
                 }
 
                 default -> Console.warn("Invalid choice. Please select 0, 1, or 2.");
+                }
+            } catch (InputValidator.ExitException | InputValidator.BackException e) {
+                Console.info("Returning to main menu.");
             }
         }
 
@@ -99,24 +103,28 @@ public class Main {
                                           InputValidator input, Scanner scanner) {
         User user = auth.getCurrentUser();
 
-        switch (user.getRole()) {
+        try {
+            switch (user.getRole()) {
 
-            case ADMIN -> {
-                AdminDashboard admin = new AdminDashboard(store, apptSvc, input, user);
-                admin.run(scanner);
+                case ADMIN -> {
+                    AdminDashboard admin = new AdminDashboard(store, apptSvc, input, user);
+                    admin.run(scanner);
+                }
+
+                case DOCTOR -> {
+                    DoctorDashboard doctor = new DoctorDashboard(store, apptSvc, input, user);
+                    doctor.run(scanner);
+                }
+
+                case PATIENT -> {
+                    PatientDashboard patient = new PatientDashboard(store, apptSvc, input, auth, user);
+                    patient.run(scanner);
+                }
+
+                default -> Console.error("Unknown role: " + user.getRole() + ". Contact system admin.");
             }
-
-            case DOCTOR -> {
-                DoctorDashboard doctor = new DoctorDashboard(store, apptSvc, input, user);
-                doctor.run(scanner);
-            }
-
-            case PATIENT -> {
-                PatientDashboard patient = new PatientDashboard(store, apptSvc, input, auth, user);
-                patient.run(scanner);
-            }
-
-            default -> Console.error("Unknown role: " + user.getRole() + ". Contact system admin.");
+        } catch (InputValidator.ExitException | InputValidator.BackException e) {
+            Console.info("Returning to dashboard.");
         }
 
         auth.logout();
