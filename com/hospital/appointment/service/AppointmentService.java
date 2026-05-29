@@ -29,6 +29,7 @@ public class AppointmentService {
     private static final int WAITLIST_MAX = 5;
     private static final String DATE_SLOTS_PREFIX = "DATES:";
     private static final String NO_SLOTS = "NONE";
+    private static final boolean SLOT_DEBUG = true;
 
     private static final ConcernOption[] CONCERN_OPTIONS = {
         new ConcernOption("Chest pain, palpitations, high blood pressure", Department.CARDIOLOGY),
@@ -107,6 +108,8 @@ public class AppointmentService {
         }
 
         // ── 7. Persist ────────────────────────────────────────────────────────
+        debugSlotStates("Before booking - selected slot reserved", doctor, date, slot);
+
         String ts   = DateUtils.now();
         String id   = store.ids.nextAppointmentId();
 
@@ -116,6 +119,7 @@ public class AppointmentService {
 
         store.appointments.add(appt);
         store.saveAppointments();
+        debugSlotStates("After booking - selected slot booked", doctor, date, slot);
 
         Console.success("Appointment booked successfully!");
         Console.fieldLine("  Appointment ID", id);
@@ -220,12 +224,16 @@ public class AppointmentService {
 
         if (!input.readYesNo("\n  Confirm cancellation? (y/n) : ")) { Console.info("Cancelled."); return; }
 
+        Doctor doctor = appt.getDoctor() != null ? appt.getDoctor() : store.doctors.get(appt.getDoctorId());
+        if (doctor != null) debugSlotStates("Before cancellation", doctor, appt.getDate(), appt.getTimeSlot());
         appt.setStatus(AppointmentStatus.CANCELLED);
         store.saveAppointments();
+        if (doctor != null) debugSlotStates("After cancellation - slot should be free unless waitlist promotes", doctor, appt.getDate(), appt.getTimeSlot());
         Console.success("Appointment " + id + " has been cancelled.");
 
         // Try to auto-promote a waitlisted patient
         autoPromote(appt.getDoctorId(), appt.getDate(), appt.getTimeSlot());
+        if (doctor != null) debugSlotStates("After waitlist refresh", doctor, appt.getDate(), appt.getTimeSlot());
     }
 
     /** Mark appointment COMPLETED — Doctor or Admin. */
@@ -269,12 +277,20 @@ public class AppointmentService {
         String newSlot = promptSlotSelect(newDoctor, newDate);
         if (newSlot == null) { Console.warn("No available slots. Reschedule aborted."); return; }
 
+        Doctor oldDoctor = appt.getDoctor() != null ? appt.getDoctor() : store.doctors.get(appt.getDoctorId());
+        String oldDate = appt.getDate();
+        String oldSlot = appt.getTimeSlot();
+        if (oldDoctor != null) debugSlotStates("Before admin reschedule - old slot", oldDoctor, oldDate, oldSlot);
+        debugSlotStates("Before admin reschedule - new slot reserved", newDoctor, newDate, newSlot);
+
         appt.setDoctorId(newDoctor.getDoctorId());
         appt.setDoctor(newDoctor);
         appt.setDate(newDate);
         appt.setTimeSlot(newSlot);
 
         store.saveAppointments();
+        if (oldDoctor != null) debugSlotStates("After admin reschedule - old slot refreshed", oldDoctor, oldDate, oldSlot);
+        debugSlotStates("After admin reschedule - new slot booked", newDoctor, newDate, newSlot);
         Console.success("Rescheduled to " + DateUtils.pretty(newDate) + " at " + newSlot);
     }
 
@@ -322,11 +338,18 @@ public class AppointmentService {
             return;
         }
 
+        String oldDate = appt.getDate();
+        String oldSlot = appt.getTimeSlot();
+        debugSlotStates("Before patient reschedule - old slot", doctor, oldDate, oldSlot);
+        debugSlotStates("Before patient reschedule - new slot reserved", doctor, newDate, newSlot);
+
         appt.setDate(newDate);
         appt.setTimeSlot(newSlot);
         appt.setDoctor(doctor);
 
         store.saveAppointments();
+        debugSlotStates("After patient reschedule - old slot refreshed", doctor, oldDate, oldSlot);
+        debugSlotStates("After patient reschedule - new slot booked", doctor, newDate, newSlot);
         Console.success("Rescheduled to " + DateUtils.pretty(newDate) + " at " + newSlot);
     }
 
@@ -591,14 +614,27 @@ public class AppointmentService {
         Console.fieldLine("  Doctor", "Dr. " + doctor.getName());
         Console.fieldLine("  Schedule", doctor.getSchedule());
         System.out.println();
-        String date = promptDoctorAvailableDate(doctor, "  Date to configure (yyyy-MM-dd) : ");
+        System.out.println("  Set availability for:");
+        System.out.println("  [1] Today");
+        System.out.println("  [2] Specific Date");
+        int dateChoice = input.readIntInRange("\n  Choice : ", 1, 2);
+        String date = dateChoice == 1
+            ? DateUtils.today()
+            : promptDoctorAvailableDate(doctor, "  Date to configure (yyyy-MM-dd) : ");
+        if (dateChoice == 1 && !isDoctorAvailableOnDate(doctor, date)) {
+            Console.warn("Dr. " + doctor.getName() + " is not scheduled today (" +
+                dayName(date) + "). Availability was not changed.");
+            return;
+        }
+
         Map<String, List<String>> dateSlots = parseDateSlotMap(doctor.getAvailableSlots());
         List<String> currentSlots = dateSlots.containsKey(date)
             ? dateSlots.get(date)
             : getAvailableSlotsForDate(doctor, date);
 
-        Console.fieldLine("  Selected Date", DateUtils.pretty(date) + " (" + dayName(date) + ")");
+        Console.fieldLine("  Date", date);
         Console.fieldLine("  Current slots", currentSlots.isEmpty() ? "None configured" : String.join(", ", currentSlots));
+        debugSlotStates("Before availability update", doctor, date, null);
         System.out.println();
         System.out.println("  Default system slots:");
         for (int i = 0; i < DEFAULT_SLOTS.size(); i++)
@@ -609,12 +645,15 @@ public class AppointmentService {
         System.out.println("  Press Enter for all default slots on this date, or type none to mark unavailable:");
         String raw = input.readOptional("  > ");
 
+        List<String> selectedSlots;
         if (raw.equalsIgnoreCase("none")) {
+            selectedSlots = Collections.emptyList();
             dateSlots.put(date, Collections.emptyList());
         } else if (raw.isEmpty()) {
-            dateSlots.put(date, new ArrayList<>(DEFAULT_SLOTS));
+            selectedSlots = new ArrayList<>(DEFAULT_SLOTS);
+            dateSlots.put(date, selectedSlots);
         } else {
-            List<String> selectedSlots = new ArrayList<>();
+            selectedSlots = new ArrayList<>();
             for (String tok : raw.split(",")) {
                 try {
                     int idx = Integer.parseInt(tok.trim()) - 1;
@@ -623,12 +662,19 @@ public class AppointmentService {
                     }
                 } catch (NumberFormatException ignored) {}
             }
+            if (selectedSlots.isEmpty()) {
+                Console.warn("No valid slot numbers selected. Availability was not changed.");
+                return;
+            }
             dateSlots.put(date, selectedSlots);
         }
 
         doctor.setAvailableSlots(encodeDateSlotMap(dateSlots));
         store.saveDoctors();
-        Console.success("Available slots updated for " + DateUtils.pretty(date) + " only.");
+        debugSlotStates("After availability update", doctor, date, null);
+        Console.success("Availability updated for " + date + " only.");
+        Console.fieldLine("  Date", date);
+        Console.fieldLine("  Available Slots", selectedSlots.isEmpty() ? "None" : String.join(", ", selectedSlots));
     }
 
     // =========================================================================
@@ -1025,6 +1071,69 @@ public class AppointmentService {
         return isPastSlot(appt.getDate(), appt.getTimeSlot());
     }
 
+    private void debugSlotStates(String label, Doctor doctor, String date, String selectedSlot) {
+        if (!SLOT_DEBUG || doctor == null || date == null) return;
+
+        List<String> configuredSlots = getAvailableSlotsForDate(doctor, date);
+        System.out.printf("  [slot-debug] %s | Dr. %s | %s%n", label, doctor.getName(), date);
+        if (configuredSlots.isEmpty()) {
+            System.out.println("  [slot-debug] configured slots: none");
+        }
+
+        Set<String> seen = new HashSet<>();
+        for (String slot : configuredSlots) {
+            List<Appointment> active = activeAppointmentsForSlot(doctor.getDoctorId(), date, slot);
+            String state;
+            if (active.size() > 1) {
+                state = "CONFLICT(" + active.size() + " active appointments)";
+            } else if (!active.isEmpty()) {
+                state = active.get(0).getStatus() == AppointmentStatus.BOOKED ? "BOOKED" : active.get(0).getStatus().name();
+            } else if (isPastSlot(date, slot)) {
+                state = "UNAVAILABLE_PAST";
+            } else if (slot.equals(selectedSlot) && label.toLowerCase().contains("reserved")) {
+                state = "RESERVED";
+            } else {
+                state = "FREE";
+            }
+            System.out.printf("  [slot-debug]   %s -> %s%n", slot, state);
+            seen.add(slot);
+        }
+
+        if (selectedSlot != null && !seen.contains(selectedSlot)) {
+            System.out.printf("  [slot-debug]   %s -> NOT_CONFIGURED%n", selectedSlot);
+        }
+        validateSlotConsistency(doctor, date, configuredSlots);
+    }
+
+    private List<Appointment> activeAppointmentsForSlot(String doctorId, String date, String slot) {
+        return store.appointments.stream()
+            .filter(a -> a.getDoctorId().equals(doctorId))
+            .filter(a -> a.getDate().equals(date))
+            .filter(a -> a.getTimeSlot().equals(slot))
+            .filter(a -> a.getStatus() != AppointmentStatus.CANCELLED)
+            .collect(Collectors.toList());
+    }
+
+    private void validateSlotConsistency(Doctor doctor, String date, List<String> configuredSlots) {
+        Set<String> configured = new HashSet<>(configuredSlots);
+        Map<String, Long> activeCounts = store.appointments.stream()
+            .filter(a -> a.getDoctorId().equals(doctor.getDoctorId()))
+            .filter(a -> a.getDate().equals(date))
+            .filter(a -> a.getStatus() != AppointmentStatus.CANCELLED)
+            .collect(Collectors.groupingBy(Appointment::getTimeSlot, Collectors.counting()));
+
+        for (Map.Entry<String, Long> entry : activeCounts.entrySet()) {
+            if (!configured.contains(entry.getKey())) {
+                Console.warn("Data check: active appointment exists on an unconfigured slot " +
+                    entry.getKey() + " for " + date + ".");
+            }
+            if (entry.getValue() > 1) {
+                Console.warn("Data check: " + entry.getValue() + " active appointments share slot " +
+                    entry.getKey() + " for Dr. " + doctor.getName() + " on " + date + ".");
+            }
+        }
+    }
+
     /** Time slot selection. Returns null when no slots free or user cancels. */
     private String promptSlotSelect(Doctor doctor, String date) {
         if (!isDoctorAvailableOnDate(doctor, date)) {
@@ -1056,7 +1165,7 @@ public class AppointmentService {
         Map<Integer, String> selectable = new LinkedHashMap<>();
         for (String slot : allSlots) {
             if (taken.contains(slot)) {
-                System.out.printf("      %s  [RESERVED]%n", slot);
+                System.out.printf("      %s  [BOOKED]%n", slot);
             } else if (isPastSlot(date, slot)) {
                 hasPastSlot = true;
                 System.out.printf("      %s  [UNAVAILABLE - PAST]%n", slot);
