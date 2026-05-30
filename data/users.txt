@@ -13,3 +13,4 @@ USR-012|dr.ramos|doc123|DOCTOR|D-11|Dr. Ramos|true|2026-05-08 16:50:00
 USR-013|dr.delacreuz|doc123|DOCTOR|D-12|Dr. DelaCreuz|true|2026-05-08 16:50:00
 USR-014|John|john123|PATIENT|PAT-2026-013|John Doe|true|2026-05-08 16:54:15
 USR-015|Mike|mike123|PATIENT|PAT-2026-014|Mike Rafone|true|2026-05-22 11:59:48
+USR-016|adolf|adolf123|PATIENT|PAT-2026-016|Adolf Hitler|true|2026-05-29 16:46:54

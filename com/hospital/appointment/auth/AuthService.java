@@ -38,37 +38,19 @@ public class AuthService {
         Console.header("LOGIN");
 
         while (true) {
-            String username = "";
-            String password = "";
-            int step = 0;
-            while (step < 2) {
-                int nav = input.readNavigationChoice(step == 0 ? "Login - Username" : "Login - Password");
-                if (nav == 0) { Console.info("Login cancelled."); return false; }
-                if (nav == 2) {
-                    if (step == 0) { Console.info("Login cancelled."); return false; }
-                    step--;
-                    continue;
-                }
+            String username = input.readLine("  Username : ");
+            if (username.equals("2")) { Console.info("Returning to main menu."); return false; }
 
-                if (step == 0) {
-                    username = input.readString("  Username : ");
-                } else {
-                    password = input.readString("  Password : ");
-                }
-                step++;
-            }
+            String password = input.readLine("  Password : ");
+            System.out.println();
+            System.out.println("  [2] Back");
+            if (password.equals("2")) { Console.info("Returning to main menu."); return false; }
 
             User user = store.findUserByUsername(username);
 
             if (user == null || !user.checkPassword(password)) {
                 Console.error("Invalid username or password.");
-                System.out.println("  [1] Try Again");
-                System.out.println("  [2] Back");
-                System.out.println("  [0] Exit");
-                int retry = input.readIntInRange("  Choice : ", 0, 2);
-                if (retry == 1) continue;
-                Console.info("Login cancelled.");
-                return false;
+                continue;
             }
 
             if (!user.isActive()) {

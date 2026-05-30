@@ -73,6 +73,12 @@ public class InputValidator {
         }
     }
 
+    /** Raw trimmed input with no validation or recovery menu */
+    public String readLine(String prompt) {
+        System.out.print(prompt);
+        return scanner.nextLine().trim();
+    }
+
     /** Optional string — returns "" if user presses Enter */
     public String readOptional(String prompt) {
         System.out.print(prompt);
