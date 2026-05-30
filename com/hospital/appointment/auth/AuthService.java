@@ -175,11 +175,27 @@ public class AuthService {
             Console.error("Incorrect current password.");
             return;
         }
-        String newPass  = input.readPassword("  New Password      : ");
-        String confirm  = input.readPassword("  Confirm Password  : ");
-        if (!newPass.equals(confirm)) {
-            Console.error("Passwords do not match.");
-            return;
+
+        String newPass;
+        while (true) {
+            int nav = input.readNavigationChoice("Change Password - New Password");
+            if (nav != 1) {
+                Console.info("Password change cancelled.");
+                return;
+            }
+
+            newPass = input.readPassword("  New Password      : ");
+            String confirm = input.readPassword("  Confirm Password  : ");
+
+            if (newPass.equals(current)) {
+                Console.error("New password must be different from current password.");
+                continue;
+            }
+            if (!newPass.equals(confirm)) {
+                Console.error("Passwords do not match.");
+                continue;
+            }
+            break;
         }
 
         currentUser.setPassword(newPass);
