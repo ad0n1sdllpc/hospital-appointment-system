@@ -200,9 +200,17 @@ public class AppointmentService {
                 case 3 -> {
                     slot = promptSlotSelect(doctor, date);
                     if (slot == null) {
-                        if (!isDoctorAvailableOnDate(doctor, date)) return;
-                        offerWaitlist(patient, doctor, date);
-                        return;
+                        if (preselectedPatient != null) {
+                            BookingSelection fallback = promptPatientAvailabilityFallback(doctor, date);
+                            if (fallback == null) return;
+                            doctor = fallback.doctor;
+                            date = fallback.date;
+                            slot = fallback.slot;
+                        } else {
+                            if (!isDoctorAvailableOnDate(doctor, date)) return;
+                            offerWaitlist(patient, doctor, date);
+                            return;
+                        }
                     }
                 }
                 case 4 -> notes = input.readOptional("  Reason / Notes (optional)  : ");
@@ -626,10 +634,6 @@ public class AppointmentService {
         System.out.printf("  %-8s  %-10s  %-24s  %s%n", "Time", "Status", "Patient", "Appt ID");
         System.out.println("  " + "-".repeat(60));
 
-        if (configuredSlots.isEmpty()) {
-            System.out.println("  No date-specific slots configured for this date.");
-        }
-
         for (Map.Entry<String, Appointment> e : slotMap.entrySet()) {
             if (e.getValue() == null) {
                 System.out.printf("  %-8s  %-10s  %s%n", e.getKey(), "[  FREE  ]", "--");
@@ -1013,6 +1017,127 @@ public class AppointmentService {
         ConcernOption(String label, Department department) {
             this.label = label;
             this.department = department;
+        }
+    }
+
+    private static class BookingSelection {
+        private final Doctor doctor;
+        private final String date;
+        private final String slot;
+
+        BookingSelection(Doctor doctor, String date, String slot) {
+            this.doctor = doctor;
+            this.date = date;
+            this.slot = slot;
+        }
+    }
+
+    private BookingSelection promptPatientAvailabilityFallback(Doctor originalDoctor, String date) {
+        while (true) {
+            Console.warn("Selected doctor is not available at this time.");
+
+            List<Doctor> suggestions = findBookableDoctorsBySpecialization(
+                originalDoctor.getSpecialization(), date, originalDoctor.getDoctorId());
+            String suggestionTitle = "Other doctors with same specialization";
+
+            if (suggestions.isEmpty()) {
+                suggestions = findBookableDoctors(originalDoctor.getDepartment(), date, originalDoctor.getDoctorId());
+                suggestionTitle = "Other doctors in same department";
+            }
+
+            if (suggestions.isEmpty() && originalDoctor.getDepartment() != Department.GENERAL_MEDICINE) {
+                suggestions = findBookableDoctors(Department.GENERAL_MEDICINE, date, originalDoctor.getDoctorId());
+                suggestionTitle = "General Medicine fallback doctors";
+            }
+
+            if (suggestions.isEmpty()) {
+                Console.info("No alternate specialist or General Medicine doctor has an open slot on " +
+                    DateUtils.pretty(date) + ".");
+            } else {
+                printBookableDoctorSuggestions(suggestionTitle, suggestions, date);
+            }
+
+            System.out.println("  [1] Choose suggested doctor");
+            System.out.println("  [2] Pick another date/time");
+            System.out.println("  [0] Cancel booking");
+            int choice = input.readIntInRange("\n  Choice : ", 0, 2);
+
+            if (choice == 0) {
+                Console.info("Booking cancelled.");
+                return null;
+            }
+
+            if (choice == 1) {
+                if (suggestions.isEmpty()) {
+                    Console.warn("No suggested doctors are available for this date.");
+                    continue;
+                }
+                Doctor suggestedDoctor = promptDoctorSelect(suggestions, "Choose Suggested Doctor");
+                if (suggestedDoctor == null) continue;
+                String suggestedSlot = promptSlotSelect(suggestedDoctor, date);
+                if (suggestedSlot != null) {
+                    return new BookingSelection(suggestedDoctor, date, suggestedSlot);
+                }
+                continue;
+            }
+
+            String newDate = promptDoctorAvailableDate(originalDoctor, "  New Date (yyyy-MM-dd) : ");
+            String newSlot = promptSlotSelect(originalDoctor, newDate);
+            if (newSlot != null) {
+                return new BookingSelection(originalDoctor, newDate, newSlot);
+            }
+            date = newDate;
+        }
+    }
+
+    private List<Doctor> findBookableDoctors(Department department, String date, String excludeDoctorId) {
+        return store.doctors.values().stream()
+            .filter(d -> d.getDepartment() == department)
+            .filter(d -> !d.getDoctorId().equals(excludeDoctorId))
+            .filter(d -> hasOpenSlotForDate(d, date))
+            .collect(Collectors.toList());
+    }
+
+    private List<Doctor> findBookableDoctorsBySpecialization(String specialization, String date, String excludeDoctorId) {
+        return store.doctors.values().stream()
+            .filter(d -> d.getSpecialization().equalsIgnoreCase(specialization))
+            .filter(d -> !d.getDoctorId().equals(excludeDoctorId))
+            .filter(d -> hasOpenSlotForDate(d, date))
+            .collect(Collectors.toList());
+    }
+
+    private boolean hasOpenSlotForDate(Doctor doctor, String date) {
+        Set<String> taken = takenSlotsFor(doctor.getDoctorId(), date);
+        return getAvailableSlotsForDate(doctor, date).stream()
+            .anyMatch(slot -> !taken.contains(slot) && !isPastSlot(date, slot));
+    }
+
+    private Set<String> takenSlotsFor(String doctorId, String date) {
+        return store.appointments.stream()
+            .filter(a -> a.getDoctorId().equals(doctorId))
+            .filter(a -> a.getDate().equals(date))
+            .filter(a -> a.getStatus() != AppointmentStatus.CANCELLED)
+            .map(Appointment::getTimeSlot)
+            .collect(Collectors.toSet());
+    }
+
+    private void printBookableDoctorSuggestions(String title, List<Doctor> doctors, String date) {
+        Console.section(title);
+        System.out.printf("  %-6s %-18s %-22s %-15s %s%n",
+            "ID", "Doctor", "Specialization", "Schedule", "Open Slots");
+        System.out.println("  " + "-".repeat(90));
+        for (Doctor doctor : doctors) {
+            Set<String> taken = takenSlotsFor(doctor.getDoctorId(), date);
+            String slots = getAvailableSlotsForDate(doctor, date).stream()
+                .filter(slot -> !taken.contains(slot))
+                .filter(slot -> !isPastSlot(date, slot))
+                .collect(Collectors.joining(", "));
+            System.out.printf("  %-6s Dr. %-14s %-22s %-15s %s%n",
+                doctor.getDoctorId(),
+                fit(doctor.getName(), 14),
+                fit(doctor.getSpecialization(), 22),
+                fit(doctor.getSchedule(), 15),
+                slots);
         }
     }
 

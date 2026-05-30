@@ -88,14 +88,16 @@ public class AdminDashboard {
         System.out.println("  [2] Add New Doctor");
         System.out.println("  [3] Edit Doctor Info");
         System.out.println("  [4] Deactivate Doctor Account");
+        System.out.println("  [5] Set Doctor Availability");
         System.out.println("  [0] Back");
 
-        int choice = input.readIntInRange("\n  Choice : ", 0, 4);
+        int choice = input.readIntInRange("\n  Choice : ", 0, 5);
         switch (choice) {
             case 1 -> listAllDoctors();
             case 2 -> addDoctor();
             case 3 -> editDoctor();
             case 4 -> deactivateDoctorAccount();
+            case 5 -> setDoctorAvailability();
             case 0 -> {}
         }
     }
@@ -191,6 +193,12 @@ public class AdminDashboard {
         u.setActive(false);
         store.saveUsers();
         Console.success("Doctor account deactivated.");
+    }
+
+    private void setDoctorAvailability() {
+        Doctor doctor = apptSvc.promptDoctorSelect();
+        if (doctor == null) return;
+        apptSvc.setDoctorSlots(doctor);
     }
 
     // =========================================================================
