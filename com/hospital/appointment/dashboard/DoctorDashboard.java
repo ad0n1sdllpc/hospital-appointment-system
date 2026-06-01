@@ -16,6 +16,7 @@ import com.hospital.appointment.util.InputValidator;
  *   [4] Set My Available Slots
  *   [5] Patient Record Lookup (own patients only)
  *   [6] Appointment Detail
+ *   [7] Mark Unavailable
  */
 public class DoctorDashboard {
 
@@ -46,7 +47,7 @@ public class DoctorDashboard {
             boolean pauseAfterAction = true;
             try {
                 Console.doctorDashboard(doctor.getName());
-                int choice = input.readIntInRange("  Your choice : ", 0, 6);
+                int choice = input.readIntInRange("  Your choice : ", 0, 7);
                 System.out.println();
 
                 switch (choice) {
@@ -56,6 +57,7 @@ public class DoctorDashboard {
                     case 4 -> apptSvc.setDoctorSlots(doctor);
                     case 5 -> apptSvc.viewPatientRecord(doctor.getDoctorId());
                     case 6 -> apptSvc.viewDetail();
+                    case 7 -> apptSvc.setDoctorUnavailable(doctor);
                     case 0 -> {
                         pauseAfterAction = false;
                         running = false;

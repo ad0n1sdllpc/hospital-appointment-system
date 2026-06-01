@@ -88,16 +88,18 @@ public class AdminDashboard {
         System.out.println("  [2] Add New Doctor");
         System.out.println("  [3] Edit Doctor Info");
         System.out.println("  [4] Deactivate Doctor Account");
-        System.out.println("  [5] Set Doctor Availability");
+        System.out.println("  [5] Set Preferred Slots");
+        System.out.println("  [6] Set Doctor Unavailability");
         System.out.println("  [0] Back");
 
-        int choice = input.readIntInRange("\n  Choice : ", 0, 5);
+        int choice = input.readIntInRange("\n  Choice : ", 0, 6);
         switch (choice) {
             case 1 -> listAllDoctors();
             case 2 -> addDoctor();
             case 3 -> editDoctor();
             case 4 -> deactivateDoctorAccount();
             case 5 -> setDoctorAvailability();
+            case 6 -> setDoctorUnavailability();
             case 0 -> {}
         }
     }
@@ -199,6 +201,12 @@ public class AdminDashboard {
         Doctor doctor = apptSvc.promptDoctorSelect();
         if (doctor == null) return;
         apptSvc.setDoctorSlots(doctor);
+    }
+
+    private void setDoctorUnavailability() {
+        Doctor doctor = apptSvc.promptDoctorSelect();
+        if (doctor == null) return;
+        apptSvc.setDoctorUnavailable(doctor);
     }
 
     // =========================================================================

@@ -23,11 +23,16 @@ public class AppointmentService {
 
     // ── Time slots available in a day ────────────────────────────────────────
     public static final List<String> DEFAULT_SLOTS = Arrays.asList(
-        "08:00","09:00","10:00","11:00","13:00","14:00","15:00","16:00","17:00"
+        "00:00","01:00","02:00","03:00","04:00","05:00","06:00","07:00",
+        "08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00",
+        "16:00","17:00","18:00","19:00","20:00","21:00","22:00","23:00"
     );
 
     private static final int WAITLIST_MAX = 5;
     private static final String DATE_SLOTS_PREFIX = "DATES:";
+    private static final String UNAVAILABLE_PREFIX = "UNAVAILABLE:";
+    private static final String SCHEDULE_SECTION_SEPARATOR = "#";
+    private static final String DATE_RANGE_SEPARATOR = "..";
     private static final String NO_SLOTS = "NONE";
     private static final boolean SLOT_DEBUG = true;
 
@@ -194,11 +199,15 @@ public class AppointmentService {
                 }
                 case 2 -> {
                     Console.section("Date & Time");
-                    date = promptDoctorAvailableDate(doctor, "  Preferred Date (yyyy-MM-dd) : ");
+                    date = preselectedPatient != null
+                        ? input.readFutureDate("  Preferred Date (yyyy-MM-dd) : ")
+                        : input.readFutureDate("  Preferred Date (yyyy-MM-dd) : ");
                     slot = "";
                 }
                 case 3 -> {
-                    slot = promptSlotSelect(doctor, date);
+                    slot = preselectedPatient == null
+                        ? promptAdminSlotSelect(doctor, date)
+                        : promptSlotSelect(doctor, date);
                     if (slot == null) {
                         if (preselectedPatient != null) {
                             BookingSelection fallback = promptPatientAvailabilityFallback(doctor, date);
@@ -721,9 +730,9 @@ public class AppointmentService {
     // =========================================================================
 
     public void setDoctorSlots(Doctor doctor) {
-        Console.header("SET DATE-SPECIFIC TIME SLOTS");
+        Console.header("SET PREFERRED TIME SLOTS");
         Console.fieldLine("  Doctor", "Dr. " + doctor.getName());
-        Console.fieldLine("  Schedule", doctor.getSchedule());
+        Console.fieldLine("  Default availability", "24/7 unless marked unavailable");
         System.out.println();
         System.out.println("  Set availability for:");
         System.out.println("  [1] Today");
@@ -731,35 +740,30 @@ public class AppointmentService {
         int dateChoice = input.readIntInRange("\n  Choice : ", 1, 2);
         String date = dateChoice == 1
             ? DateUtils.today()
-            : promptDoctorAvailableDate(doctor, "  Date to configure (yyyy-MM-dd) : ");
-        if (dateChoice == 1 && !isDoctorAvailableOnDate(doctor, date)) {
-            Console.warn("Dr. " + doctor.getName() + " is not scheduled today (" +
-                dayName(date) + "). Availability was not changed.");
-            return;
-        }
+            : input.readFutureDate("  Date to configure (yyyy-MM-dd) : ");
 
         Map<String, List<String>> dateSlots = parseDateSlotMap(doctor.getAvailableSlots());
         List<String> currentSlots = dateSlots.containsKey(date)
             ? dateSlots.get(date)
-            : getAvailableSlotsForDate(doctor, date);
+            : DEFAULT_SLOTS;
 
         Console.fieldLine("  Date", date);
-        Console.fieldLine("  Current slots", currentSlots.isEmpty() ? "None configured" : String.join(", ", currentSlots));
+        Console.fieldLine("  Current preferred slots", currentSlots.isEmpty() ? "Default 24-hour slots" : String.join(", ", currentSlots));
         debugSlotStates("Before availability update", doctor, date, null);
         System.out.println();
-        System.out.println("  Default system slots:");
+        System.out.println("  Hourly system slots:");
         for (int i = 0; i < DEFAULT_SLOTS.size(); i++)
             System.out.printf("  [%d] %s%n", i + 1, DEFAULT_SLOTS.get(i));
 
         System.out.println();
         System.out.println("  Enter slot numbers for this date only, separated by commas (e.g. 1,2,3,5).");
-        System.out.println("  Press Enter for all default slots on this date, or type none to mark unavailable:");
+        System.out.println("  Press Enter for all 24 hourly slots on this date, or type default to clear preferred slots:");
         String raw = input.readOptional("  > ");
 
         List<String> selectedSlots;
-        if (raw.equalsIgnoreCase("none")) {
+        if (raw.equalsIgnoreCase("default")) {
             selectedSlots = Collections.emptyList();
-            dateSlots.put(date, Collections.emptyList());
+            dateSlots.remove(date);
         } else if (raw.isEmpty()) {
             selectedSlots = new ArrayList<>(DEFAULT_SLOTS);
             dateSlots.put(date, selectedSlots);
@@ -780,12 +784,72 @@ public class AppointmentService {
             dateSlots.put(date, selectedSlots);
         }
 
-        doctor.setAvailableSlots(encodeDateSlotMap(dateSlots));
+        doctor.setAvailableSlots(encodeScheduleConfig(dateSlots, parseUnavailableEntries(doctor.getAvailableSlots())));
         store.saveDoctors();
         debugSlotStates("After availability update", doctor, date, null);
-        Console.success("Availability updated for " + date + " only.");
+        Console.success("Preferred schedule updated for " + date + " only.");
         Console.fieldLine("  Date", date);
-        Console.fieldLine("  Available Slots", selectedSlots.isEmpty() ? "None" : String.join(", ", selectedSlots));
+        Console.fieldLine("  Preferred Slots", selectedSlots.isEmpty() ? "Default 24-hour slots" : String.join(", ", selectedSlots));
+    }
+
+    public void setDoctorUnavailable(Doctor doctor) {
+        Console.header("SET DOCTOR UNAVAILABILITY");
+        Console.fieldLine("  Doctor", "Dr. " + doctor.getName());
+        System.out.println();
+        System.out.println("  Mark unavailable for:");
+        System.out.println("  [1] Today");
+        System.out.println("  [2] Specific Date");
+        System.out.println("  [3] Date Range");
+        System.out.println("  [4] Remove Unavailability");
+        int choice = input.readIntInRange("\n  Choice : ", 1, 4);
+
+        Set<String> unavailable = parseUnavailableEntries(doctor.getAvailableSlots());
+        String entry;
+        if (choice == 1) {
+            entry = DateUtils.today();
+        } else if (choice == 2) {
+            entry = input.readFutureDate("  Date (yyyy-MM-dd) : ");
+        } else if (choice == 3) {
+            String start = input.readFutureDate("  Start Date (yyyy-MM-dd) : ");
+            String end = input.readFutureDate("  End Date (yyyy-MM-dd)   : ");
+            LocalDate startDate = DateUtils.parseDate(start);
+            LocalDate endDate = DateUtils.parseDate(end);
+            if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+                Console.error("Invalid date range.");
+                return;
+            }
+            entry = start + DATE_RANGE_SEPARATOR + end;
+        } else {
+            removeDoctorUnavailability(doctor, unavailable);
+            return;
+        }
+
+        unavailable.add(entry);
+        doctor.setAvailableSlots(encodeScheduleConfig(parseDateSlotMap(doctor.getAvailableSlots()), unavailable));
+        store.saveDoctors();
+        Console.success("Dr. " + doctor.getName() + " marked unavailable.");
+        Console.fieldLine("  Unavailable", entry.replace(DATE_RANGE_SEPARATOR, " to "));
+    }
+
+    private void removeDoctorUnavailability(Doctor doctor, Set<String> unavailable) {
+        if (unavailable.isEmpty()) {
+            Console.info("No unavailable dates or ranges are configured.");
+            return;
+        }
+
+        List<String> entries = new ArrayList<>(unavailable);
+        System.out.println();
+        for (int i = 0; i < entries.size(); i++) {
+            System.out.printf("  [%d] %s%n", i + 1, entries.get(i).replace(DATE_RANGE_SEPARATOR, " to "));
+        }
+        System.out.println("  [0] Cancel");
+        int choice = input.readIntInRange("\n  Remove : ", 0, entries.size());
+        if (choice == 0) { Console.info("Cancelled."); return; }
+
+        unavailable.remove(entries.get(choice - 1));
+        doctor.setAvailableSlots(encodeScheduleConfig(parseDateSlotMap(doctor.getAvailableSlots()), unavailable));
+        store.saveDoctors();
+        Console.success("Unavailability removed.");
     }
 
     // =========================================================================
@@ -1002,7 +1066,7 @@ public class AppointmentService {
     }
 
     private String slotSummary(Doctor doctor) {
-        return "By date";
+        return "24/7 default";
     }
 
     private String fit(String value, int max) {
@@ -1142,23 +1206,17 @@ public class AppointmentService {
     }
 
     private String promptDoctorAvailableDate(Doctor doctor, String prompt) {
-        System.out.println("  Doctor schedule: " + doctor.getSchedule());
-        System.out.println("  Dates outside this schedule are not allowed.");
+        System.out.println("  Default availability: 24/7 unless marked unavailable.");
         while (true) {
             String date = input.readFutureDate(prompt);
             if (isDoctorAvailableOnDate(doctor, date)) return date;
             Console.warn("Dr. " + doctor.getName() + " is not available on " +
-                DateUtils.pretty(date) + " (" + dayName(date) + "). Schedule: " + doctor.getSchedule() + ".");
+                DateUtils.pretty(date) + " because this date is marked unavailable.");
         }
     }
 
     private boolean isDoctorAvailableOnDate(Doctor doctor, String date) {
-        LocalDate parsedDate = DateUtils.parseDate(date);
-        if (parsedDate == null) return false;
-
-        Set<DayOfWeek> days = parseScheduleDays(doctor.getSchedule());
-        if (days.isEmpty()) return false;
-        return days.contains(parsedDate.getDayOfWeek());
+        return DateUtils.parseDate(date) != null && !isDateUnavailable(doctor, date);
     }
 
     private Set<DayOfWeek> parseScheduleDays(String schedule) {
@@ -1229,20 +1287,26 @@ public class AppointmentService {
         if (!isDoctorAvailableOnDate(doctor, date)) return Collections.emptyList();
 
         Map<String, List<String>> dateSlots = parseDateSlotMap(savedSlots);
-        if (dateSlots.containsKey(date)) return dateSlots.get(date);
+        if (dateSlots.containsKey(date) && !dateSlots.get(date).isEmpty()) return dateSlots.get(date);
 
-        return Collections.emptyList();
+        return DEFAULT_SLOTS;
+    }
+
+    private List<String> getSlotsForDateIgnoringUnavailability(Doctor doctor, String date) {
+        Map<String, List<String>> dateSlots = parseDateSlotMap(doctor.getAvailableSlots());
+        if (dateSlots.containsKey(date) && !dateSlots.get(date).isEmpty()) return dateSlots.get(date);
+        return DEFAULT_SLOTS;
     }
 
     private boolean usesDateSpecificSlots(String savedSlots) {
-        return savedSlots != null && savedSlots.startsWith(DATE_SLOTS_PREFIX);
+        return savedSlots != null && savedSlots.contains(DATE_SLOTS_PREFIX);
     }
 
     private Map<String, List<String>> parseDateSlotMap(String savedSlots) {
         Map<String, List<String>> dateSlots = new TreeMap<>();
         if (!usesDateSpecificSlots(savedSlots)) return dateSlots;
 
-        String body = savedSlots.substring(DATE_SLOTS_PREFIX.length());
+        String body = sectionBody(savedSlots, DATE_SLOTS_PREFIX);
         for (String entry : body.split(";")) {
             if (entry.trim().isEmpty()) continue;
             String[] parts = entry.split("=", 2);
@@ -1269,11 +1333,72 @@ public class AppointmentService {
     }
 
     private String encodeDateSlotMap(Map<String, List<String>> dateSlots) {
-        if (dateSlots.isEmpty()) return DATE_SLOTS_PREFIX;
+        return encodeScheduleConfig(dateSlots, Collections.emptySet());
+    }
 
-        return DATE_SLOTS_PREFIX + dateSlots.entrySet().stream()
-            .map(e -> e.getKey() + "=" + (e.getValue().isEmpty() ? NO_SLOTS : String.join(",", e.getValue())))
-            .collect(Collectors.joining(";"));
+    private String encodeScheduleConfig(Map<String, List<String>> dateSlots, Set<String> unavailableEntries) {
+        String dateSection = DATE_SLOTS_PREFIX;
+        if (!dateSlots.isEmpty()) {
+            dateSection += dateSlots.entrySet().stream()
+                .map(e -> e.getKey() + "=" + (e.getValue().isEmpty() ? NO_SLOTS : String.join(",", e.getValue())))
+                .collect(Collectors.joining(";"));
+        }
+
+        if (unavailableEntries == null || unavailableEntries.isEmpty()) return dateSection;
+        return dateSection + SCHEDULE_SECTION_SEPARATOR + UNAVAILABLE_PREFIX +
+            unavailableEntries.stream().sorted().collect(Collectors.joining(","));
+    }
+
+    private String sectionBody(String savedSlots, String prefix) {
+        int start = savedSlots.indexOf(prefix);
+        if (start < 0) return "";
+        start += prefix.length();
+        int end = savedSlots.indexOf(SCHEDULE_SECTION_SEPARATOR, start);
+        return end < 0 ? savedSlots.substring(start) : savedSlots.substring(start, end);
+    }
+
+    private Set<String> parseUnavailableEntries(String savedSlots) {
+        Set<String> unavailable = new TreeSet<>();
+        if (savedSlots == null || !savedSlots.contains(UNAVAILABLE_PREFIX)) return unavailable;
+
+        String body = sectionBody(savedSlots, UNAVAILABLE_PREFIX);
+        for (String entry : body.split(",")) {
+            String value = entry.trim();
+            if (value.isEmpty()) continue;
+
+            if (value.contains(DATE_RANGE_SEPARATOR)) {
+                String[] dates = value.split("\\.\\.", 2);
+                if (dates.length == 2
+                    && DateUtils.parseDate(dates[0]) != null
+                    && DateUtils.parseDate(dates[1]) != null) {
+                    unavailable.add(value);
+                }
+            } else if (DateUtils.parseDate(value) != null) {
+                unavailable.add(value);
+            }
+        }
+        return unavailable;
+    }
+
+    private boolean isDateUnavailable(Doctor doctor, String date) {
+        LocalDate selected = DateUtils.parseDate(date);
+        if (selected == null) return true;
+
+        for (String entry : parseUnavailableEntries(doctor.getAvailableSlots())) {
+            if (entry.contains(DATE_RANGE_SEPARATOR)) {
+                String[] dates = entry.split("\\.\\.", 2);
+                LocalDate start = DateUtils.parseDate(dates[0]);
+                LocalDate end = DateUtils.parseDate(dates[1]);
+                if (start != null && end != null
+                    && !selected.isBefore(start)
+                    && !selected.isAfter(end)) {
+                    return true;
+                }
+            } else if (entry.equals(date)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean hasFutureSlotForDate(Doctor doctor, String date) {
@@ -1389,7 +1514,7 @@ public class AppointmentService {
             return null;
         }
 
-        System.out.printf("%n  Available slots — Dr. %s on %s:%n",
+        System.out.printf("%n  Available slots - Dr. %s on %s:%n",
             doctor.getName(), DateUtils.pretty(date));
         System.out.println("  " + "-".repeat(48));
         int freeIndex = 1;
@@ -1410,6 +1535,44 @@ public class AppointmentService {
         System.out.println("  [0] Cancel / Join Waitlist");
         System.out.println("  " + "-".repeat(48));
         if (hasPastSlot) Console.warn("Selected time has already passed.");
+
+        if (selectable.isEmpty()) return null;
+
+        int choice = input.readIntInRange("\n  Select slot : ", 0, selectable.size());
+        if (choice == 0) { Console.info("No slot selected."); return null; }
+        return selectable.get(choice);
+    }
+
+    private String promptAdminSlotSelect(Doctor doctor, String date) {
+        boolean unavailable = !isDoctorAvailableOnDate(doctor, date);
+        if (unavailable) {
+            Console.warn("Dr. " + doctor.getName() + " is marked unavailable on " + DateUtils.pretty(date) + ".");
+            if (!input.readYesNo("  Admin override and continue? (y/n) : ")) return null;
+        }
+
+        List<String> allSlots = unavailable
+            ? getSlotsForDateIgnoringUnavailability(doctor, date)
+            : getAvailableSlotsForDate(doctor, date);
+
+        Set<String> taken = takenSlotsFor(doctor.getDoctorId(), date);
+        System.out.printf("%n  Available slots - Dr. %s on %s:%n",
+            doctor.getName(), DateUtils.pretty(date));
+        System.out.println("  " + "-".repeat(48));
+        int freeIndex = 1;
+        Map<Integer, String> selectable = new LinkedHashMap<>();
+        for (String slot : allSlots) {
+            if (taken.contains(slot)) {
+                System.out.printf("      %s  [BOOKED]%n", slot);
+            } else if (isPastSlot(date, slot)) {
+                System.out.printf("      %s  [UNAVAILABLE - PAST]%n", slot);
+            } else {
+                selectable.put(freeIndex, slot);
+                System.out.printf("  [%d] %s  [FREE]%n", freeIndex, slot);
+                freeIndex++;
+            }
+        }
+        System.out.println("  [0] Cancel / Join Waitlist");
+        System.out.println("  " + "-".repeat(48));
 
         if (selectable.isEmpty()) return null;
 

@@ -70,8 +70,8 @@ public class Console {
         System.out.println("  |  MY SCHEDULE                    |  PATIENT RECORDS                  |");
         System.out.println("  |  [1]  My Appointments Today     |  [5]  Patient Record Lookup       |");
         System.out.println("  |  [2]  My Full Schedule          |  [6]  Appointment Detail          |");
-        System.out.println("  |  [3]  Mark Appointment Done     |                                   |");
-        System.out.println("  |  [4]  Set My Available Slots    |  [0]  Logout                      |");
+        System.out.println("  |  [3]  Mark Appointment Done     |  [7]  Mark Unavailable            |");
+        System.out.println("  |  [4]  Set Preferred Slots       |  [0]  Logout                      |");
         dashboardFooter();
     }
 
