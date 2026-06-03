@@ -72,69 +72,54 @@ public class AuthService {
     public boolean register() {
         Console.header("PATIENT REGISTRATION");
 
-        String username = "";
-        String password = "";
-        String confirm = "";
-        String name = "";
-        int age = 0;
-        String address = "";
-        String contact = "";
-        String email = "";
-        String blood = "";
-        String emergency = "";
+        String username;
+        String password;
+        String name;
+        int age;
+        String address;
+        String contact;
+        String email;
+        String blood;
+        String emergency;
 
-        int step = 0;
-        while (step < 10) {
-            if (step == 0) Console.section("Create Your Account");
-            if (step == 3) Console.section("Personal Information");
-
-            String label = switch (step) {
-                case 0 -> "Registration - Username";
-                case 1 -> "Registration - Password";
-                case 2 -> "Registration - Confirm Password";
-                case 3 -> "Registration - Full Name";
-                case 4 -> "Registration - Age";
-                case 5 -> "Registration - Address";
-                case 6 -> "Registration - Contact Number";
-                case 7 -> "Registration - Email";
-                case 8 -> "Registration - Blood Type";
-                case 9 -> "Registration - Emergency Contact Number";
-                default -> "Registration";
-            };
-
-            int nav = input.readNavigationChoice(label);
-            if (nav == 0) { Console.info("Registration cancelled."); return false; }
-            if (nav == 2) {
-                if (step == 0) { Console.info("Registration cancelled."); return false; }
-                step--;
-                continue;
-            }
-
-            switch (step) {
-                case 0 -> {
-                    username = input.readUsername("  Choose a Username  : ");
-                    if (!store.isUsernameAvailable(username)) {
-                        Console.error("Username '" + username + "' is already taken. Please try another.");
-                        continue;
-                    }
+        while (true) {
+            while (true) {
+                Console.section("Create Your Account");
+                username = input.readUsername("  Choose a Username  : ");
+                if (!store.isUsernameAvailable(username)) {
+                    Console.error("Username '" + username + "' is already taken. Please try another.");
+                    continue;
                 }
-                case 1 -> password = input.readPassword("  Choose a Password  : ");
-                case 2 -> {
-                    confirm = input.readPassword("  Confirm Password   : ");
+
+                try {
+                    password = input.readPassword("  Choose a Password  : ");
+                    String confirm = input.readPassword("  Confirm Password   : ");
                     if (!password.equals(confirm)) {
                         Console.error("Passwords do not match. Please try again.");
                         continue;
                     }
+                    break;
+                } catch (InputValidator.BackException e) {
+                    Console.info("Returning to username input.");
                 }
-                case 3 -> name = input.readFullName("  Full Name          : ");
-                case 4 -> age = input.readAge("  Age               : ");
-                case 5 -> address = input.readString("  Address            : ");
-                case 6 -> contact = input.readContact("  Contact Number     : ");
-                case 7 -> email = input.readEmail("  Email (optional)   : ");
-                case 8 -> blood = input.readBloodType("  Blood Type (opt)   : ");
-                case 9 -> emergency = input.readContact("  Emergency Contact Number : ");
             }
-            step++;
+
+            Console.section("Personal Information");
+            name = input.readFullName("  Full Name          : ");
+            age = input.readAge("  Age               : ");
+            address = input.readString("  Address            : ");
+            contact = input.readContact("  Contact Number     : ");
+            email = input.readEmail("  Email (optional)   : ");
+            blood = input.readBloodType("  Blood Type (opt)   : ");
+            emergency = input.readContact("  Emergency Contact Number : ");
+
+            System.out.println();
+            System.out.println("  Proceed with registration?");
+            System.out.println("  [1] Continue");
+            System.out.println("  [2] Back");
+            int confirmRegistration = input.readIntInRange("  Choice : ", 1, 2);
+            if (confirmRegistration == 1) break;
+            Console.info("Returning to account input.");
         }
 
         // Create accounts
