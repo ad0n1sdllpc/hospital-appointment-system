@@ -238,11 +238,20 @@ public class InputValidator {
     /** Password: minimum 6 chars */
     public String readPassword(String prompt) {
         while (true) {
-            System.out.print(prompt);
-            String input = scanner.nextLine().trim();
+            String input = readPasswordLine(prompt);
             if (input.length() >= 6) return input;
             handleInputError("Password must be at least 6 characters.");
         }
+    }
+
+    /** Password-style input with a visible Back option and no length validation */
+    public String readPasswordLine(String prompt) {
+        System.out.println(prompt);
+        System.out.println("  [2] Back");
+        System.out.print("  > ");
+        String input = scanner.nextLine().trim();
+        if (input.equals("2")) throw new BackException();
+        return input;
     }
 
     /** Yes/no — returns true for yes */

@@ -41,10 +41,7 @@ public class AuthService {
             String username = input.readLine("  Username : ");
             if (username.equals("2")) { Console.info("Returning to main menu."); return false; }
 
-            String password = input.readLine("  Password : ");
-            System.out.println();
-            System.out.println("  [2] Back");
-            if (password.equals("2")) { Console.info("Returning to main menu."); return false; }
+            String password = input.readPasswordLine("  Password : ");
 
             User user = store.findUserByUsername(username);
 
@@ -170,7 +167,7 @@ public class AuthService {
     public void changePassword() {
         Console.header("CHANGE PASSWORD");
 
-        String current = input.readString  ("  Current Password : ");
+        String current = input.readPasswordLine("  Current Password : ");
         if (!currentUser.checkPassword(current)) {
             Console.error("Incorrect current password.");
             return;
@@ -187,7 +184,7 @@ public class AuthService {
             newPass = input.readPassword("  New Password      : ");
             String confirm = input.readPassword("  Confirm Password  : ");
 
-            if (newPass.equals(current)) {
+            if (currentUser.checkPassword(newPass)) {
                 Console.error("New password must be different from current password.");
                 continue;
             }
