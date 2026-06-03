@@ -86,18 +86,20 @@ public class AdminDashboard {
         System.out.println("  [2] Add New Doctor");
         System.out.println("  [3] Edit Doctor Info");
         System.out.println("  [4] Deactivate Doctor Account");
-        System.out.println("  [5] Set Preferred Slots");
-        System.out.println("  [6] Set Doctor Unavailability");
+        System.out.println("  [5] Delete Doctor Permanently");
+        System.out.println("  [6] Set Preferred Slots");
+        System.out.println("  [7] Set Doctor Unavailability");
         System.out.println("  [0] Back");
 
-        int choice = input.readIntInRange("\n  Choice : ", 0, 6);
+        int choice = input.readIntInRange("\n  Choice : ", 0, 7);
         switch (choice) {
             case 1 -> listAllDoctors();
             case 2 -> addDoctor();
             case 3 -> editDoctor();
             case 4 -> deactivateDoctorAccount();
-            case 5 -> setDoctorAvailability();
-            case 6 -> setDoctorUnavailability();
+            case 5 -> deleteDoctorPermanently();
+            case 6 -> setDoctorAvailability();
+            case 7 -> setDoctorUnavailability();
             case 0 -> {}
         }
     }
@@ -105,14 +107,14 @@ public class AdminDashboard {
     private void listAllDoctors() {
         Console.header("ALL DOCTORS");
         if (store.doctors.isEmpty()) { Console.info("No doctors registered."); return; }
-        System.out.printf("  %-6s %-22s %-28s %-14s %-5s%n",
-            "ID", "Name", "Department", "Schedule", "Exp");
-        System.out.println("  " + "-".repeat(80));
+        System.out.printf("  %-6s %-22s %-28s %-14s %-10s %-5s%n",
+            "ID", "Name", "Department", "Schedule", "Status", "Exp");
+        System.out.println("  " + "-".repeat(94));
         store.doctors.values().forEach(d ->
-            System.out.printf("  %-6s %-22s %-28s %-14s %d yrs%n",
+            System.out.printf("  %-6s %-22s %-28s %-14s %-10s %d yrs%n",
                 d.getDoctorId(), d.getName(),
                 d.getDepartment().getDisplayName(),
-                d.getSchedule(), d.getYearsOfExperience()));
+                d.getSchedule(), doctorAccountStatus(d), d.getYearsOfExperience()));
     }
 
     private void addDoctor() {
@@ -193,6 +195,42 @@ public class AdminDashboard {
         u.setActive(false);
         store.saveUsers();
         Console.success("Doctor account deactivated.");
+        Console.info("The doctor record remains for history and can still appear in admin lists.");
+        Console.info("Use Delete Doctor Permanently to remove a doctor with no appointment history.");
+    }
+
+    private void deleteDoctorPermanently() {
+        Console.header("DELETE DOCTOR PERMANENTLY");
+        String docId = input.readString("  Doctor ID : ").toUpperCase();
+        Doctor d = store.doctors.get(docId);
+        if (d == null) { Console.error("Doctor not found."); return; }
+
+        boolean hasAppointments = store.appointments.stream()
+            .anyMatch(appt -> appt.getDoctorId().equals(docId));
+        if (hasAppointments) {
+            Console.error("Cannot permanently delete Dr. " + d.getName() + " because appointment records exist.");
+            Console.info("Deactivate the account instead to disable login while preserving appointment history.");
+            return;
+        }
+
+        if (!input.readYesNo("  Permanently delete Dr. " + d.getName() + " and linked login account? (y/n) : ")) {
+            Console.info("Cancelled.");
+            return;
+        }
+
+        store.doctors.remove(docId);
+        store.users.removeIf(usr -> usr.getUserId().equals(d.getUserId()));
+        store.saveDoctors();
+        store.saveUsers();
+        Console.success("Doctor permanently deleted.");
+    }
+
+    private String doctorAccountStatus(Doctor doctor) {
+        return store.users.stream()
+            .filter(usr -> usr.getUserId().equals(doctor.getUserId()))
+            .findFirst()
+            .map(usr -> usr.isActive() ? "Active" : "Inactive")
+            .orElse("No Login");
     }
 
     private void setDoctorAvailability() {
