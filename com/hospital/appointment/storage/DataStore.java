@@ -18,7 +18,6 @@ import java.util.*;
  *   data/patients.txt     — patient domain records
  *   data/doctors.txt      — doctor domain records
  *   data/appointments.txt — appointment records
- *   data/waitlist.txt     — waitlist entries
  */
 public class DataStore {
 
@@ -28,14 +27,12 @@ public class DataStore {
     private static final String PATS  = DIR + "/patients.txt";
     private static final String DOCS  = DIR + "/doctors.txt";
     private static final String APTS  = DIR + "/appointments.txt";
-    private static final String WL    = DIR + "/waitlist.txt";
 
     // ── Collections ───────────────────────────────────────────────────────────
     public final List<User>          users        = new ArrayList<>();
     public final Map<String, Patient> patients    = new LinkedHashMap<>(); // patientId -> Patient
     public final Map<String, Doctor>  doctors     = new LinkedHashMap<>(); // doctorId  -> Doctor
     public final List<Appointment>    appointments = new ArrayList<>();
-    public final List<WaitlistEntry>  waitlist     = new ArrayList<>();
 
     public final IdGenerator ids = new IdGenerator();
 
@@ -50,7 +47,6 @@ public class DataStore {
         loadPatients();
         loadUsers();
         loadAppointments();
-        loadWaitlist();
         resolveAll();
         seedDefaultsIfEmpty();
     }
@@ -112,20 +108,6 @@ public class DataStore {
         }
     }
 
-    private void loadWaitlist() {
-        for (String line : readLines(WL)) {
-            String[] p = split(line, 8);
-            if (p == null) continue;
-            try {
-                WaitlistEntry w = new WaitlistEntry(p[0], p[1], p[2],
-                    p[3], WaitlistStatus.valueOf(p[4]), p[5],
-                    Integer.parseInt(p[6]), p[7]);
-                waitlist.add(w);
-                ids.syncWaitlist(IdGenerator.seq(w.getWaitlistId()));
-            } catch (Exception e) { warn("waitlist.txt", e); }
-        }
-    }
-
     // =========================================================================
     // SAVE
     // =========================================================================
@@ -135,30 +117,23 @@ public class DataStore {
         saveDoctors();
         savePatients();
         saveAppointments();
-        saveWaitlist();
     }
 
     public void saveUsers()        { writeLines(USERS, users.stream().map(User::toFileString).toList()); }
     public void saveDoctors()      { writeLines(DOCS,  new ArrayList<>(doctors.values()).stream().map(Doctor::toFileString).toList()); }
     public void savePatients()     { writeLines(PATS,  new ArrayList<>(patients.values()).stream().map(Patient::toFileString).toList()); }
     public void saveAppointments() { writeLines(APTS,  appointments.stream().map(Appointment::toFileString).toList()); }
-    public void saveWaitlist()     { writeLines(WL,    waitlist.stream().map(WaitlistEntry::toFileString).toList()); }
 
     // =========================================================================
     // RESOLVE — link FK references after load
     // =========================================================================
 
-    /** Hydrates transient Patient/Doctor references on Appointment and WaitlistEntry objects. */
+    /** Hydrates transient Patient/Doctor references on Appointment objects. */
     public void resolveAll() {
         for (Appointment a : appointments) {
             Patient pat = patients.get(a.getPatientId());
             Doctor  doc = doctors.get(a.getDoctorId());
             a.resolve(pat, doc);
-        }
-        for (WaitlistEntry w : waitlist) {
-            Patient pat = patients.get(w.getPatientId());
-            Doctor  doc = doctors.get(w.getDoctorId());
-            w.resolve(pat, doc);
         }
     }
 

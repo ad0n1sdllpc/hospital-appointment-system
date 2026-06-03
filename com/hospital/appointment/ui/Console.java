@@ -51,15 +51,15 @@ public class Console {
     public static void adminDashboard(String name) {
         dashboardHeader("ADMINISTRATOR DASHBOARD", name, "Full System Access");
         System.out.println("  |  APPOINTMENTS                   |  MANAGEMENT                       |");
-        System.out.println("  |  [1]  Book Appointment          |  [9]  Manage Doctors              |");
-        System.out.println("  |  [2]  View All Appointments     |  [10] Manage Patients             |");
-        System.out.println("  |  [3]  Appointment Detail        |  [11] View Waitlist               |");
-        System.out.println("  |  [4]  Approve / Reschedule      |  [12] View Report Summary         |");
+        System.out.println("  |  [1]  Book Appointment          |  [8]  Manage Doctors              |");
+        System.out.println("  |  [2]  View All Appointments     |  [9]  Manage Patients             |");
+        System.out.println("  |  [3]  Appointment Detail        |  [10] View Report Summary         |");
+        System.out.println("  |  [4]  Approve / Reschedule      |                                   |");
         System.out.println("  |  [5]  Cancel Appointment        |                                   |");
         System.out.println("  |  [6]  Complete Appointment      |  SEARCH & FILTER                  |");
-        System.out.println("  |  [7]  View Doctor Schedule      |  [13] Search All Records          |");
-        System.out.println("  |  [8]  Manage Waitlist           |  [14] Filter by Status            |");
-        System.out.println("  |                                 |  [15] Filter by Department        |");
+        System.out.println("  |  [7]  View Doctor Schedule      |  [11] Search All Records          |");
+        System.out.println("  |                                 |  [12] Filter by Status            |");
+        System.out.println("  |                                 |  [13] Filter by Department        |");
         System.out.println("  |                                 |                                   |");
         System.out.println("  |                                 |  [0]  Logout                      |");
         dashboardFooter();
@@ -82,7 +82,6 @@ public class Console {
         System.out.println("  |  [2]  My Upcoming Appointments  |  [6]  Change Password             |");
         System.out.println("  |  [3]  Cancel My Appointment     |  [7]  Reschedule Appointment      |");
         System.out.println("  |  [4]  My Appointment History    |  [0]  Logout                      |");
-        System.out.println("  |       Join Waitlist -> [1]      |                                   |");
         dashboardFooter();
     }
 
@@ -177,12 +176,6 @@ public class Console {
     public static void appointmentTableFooter(int count) {
         System.out.println("  " + DASH);
         System.out.printf ("  Total: %d record(s)%n", count);
-    }
-
-    public static void waitlistTableHeader() {
-        System.out.printf("  %-14s %-6s %-20s %-18s %-12s %-10s%n",
-            "WL ID", "Queue", "Patient", "Doctor", "Date", "Status");
-        System.out.println("  " + DASH);
     }
 
     // =========================================================================

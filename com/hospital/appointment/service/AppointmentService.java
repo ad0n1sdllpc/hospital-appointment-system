@@ -28,7 +28,6 @@ public class AppointmentService {
         "16:00","17:00","18:00","19:00","20:00","21:00","22:00","23:00"
     );
 
-    private static final int WAITLIST_MAX = 5;
     private static final String DATE_SLOTS_PREFIX = "DATES:";
     private static final String UNAVAILABLE_PREFIX = "UNAVAILABLE:";
     private static final String SCHEDULE_SECTION_SEPARATOR = "#";
@@ -111,8 +110,7 @@ public class AppointmentService {
         if (slotNav != 1) { Console.info("Booking cancelled."); return; }
         String slot = promptSlotSelect(doctor, date);
         if (slot == null) {
-            if (!isDoctorAvailableOnDate(doctor, date)) return;
-            offerWaitlist(patient, doctor, date);
+            Console.warn("No available slots. Booking cancelled.");
             return;
         }
 
@@ -216,8 +214,7 @@ public class AppointmentService {
                             date = fallback.date;
                             slot = fallback.slot;
                         } else {
-                            if (!isDoctorAvailableOnDate(doctor, date)) return;
-                            offerWaitlist(patient, doctor, date);
+                            Console.warn("No available slots. Booking cancelled.");
                             return;
                         }
                     }
@@ -352,12 +349,8 @@ public class AppointmentService {
         if (doctor != null) debugSlotStates("Before cancellation", doctor, appt.getDate(), appt.getTimeSlot());
         appt.setStatus(AppointmentStatus.CANCELLED);
         store.saveAppointments();
-        if (doctor != null) debugSlotStates("After cancellation - slot should be free unless waitlist promotes", doctor, appt.getDate(), appt.getTimeSlot());
+        if (doctor != null) debugSlotStates("After cancellation - slot should be free", doctor, appt.getDate(), appt.getTimeSlot());
         Console.success("Appointment " + id + " has been cancelled.");
-
-        // Try to auto-promote a waitlisted patient
-        autoPromote(appt.getDoctorId(), appt.getDate(), appt.getTimeSlot());
-        if (doctor != null) debugSlotStates("After waitlist refresh", doctor, appt.getDate(), appt.getTimeSlot());
     }
 
     /** Mark appointment COMPLETED — Doctor or Admin. */
@@ -534,78 +527,6 @@ public class AppointmentService {
     }
 
     // =========================================================================
-    // WAITLIST
-    // =========================================================================
-
-    public void viewWaitlist() {
-        Console.header("WAITLIST");
-        List<WaitlistEntry> active = store.waitlist.stream()
-            .filter(w -> w.getStatus() == WaitlistStatus.WAITING)
-            .sorted(Comparator.comparingInt(WaitlistEntry::getQueuePosition))
-            .collect(Collectors.toList());
-
-        if (active.isEmpty()) { Console.info("Waitlist is empty."); return; }
-
-        Console.waitlistTableHeader();
-        for (WaitlistEntry e : active) System.out.println(e.toTableRow());
-        System.out.println("  " + "-".repeat(70));
-        System.out.printf("  Total waiting: %d%n", active.size());
-    }
-
-    public void joinWaitlist(Patient patient) {
-        Console.header("JOIN WAITLIST");
-
-        Doctor doctor = promptDoctorSelect();
-        if (doctor == null) return;
-
-        String date  = promptDoctorAvailableDate(doctor, "  Preferred Date (yyyy-MM-dd) : ");
-        if (!hasFutureSlotForDate(doctor, date)) {
-            Console.warn("Cannot join waitlist because there are no remaining future slots for Dr. " +
-                doctor.getName() + " on " + DateUtils.pretty(date) + ".");
-            return;
-        }
-        String notes = input.readOptional  ("  Notes (optional)            : ");
-
-        long count = store.waitlist.stream()
-            .filter(w -> w.getDoctorId().equals(doctor.getDoctorId())
-                      && w.getPreferredDate().equals(date)
-                      && w.getStatus() == WaitlistStatus.WAITING)
-            .count();
-
-        if (count >= WAITLIST_MAX) {
-            Console.error("Waitlist full for Dr. " + doctor.getName() + " on " + date + ".");
-            return;
-        }
-
-        String id = store.ids.nextWaitlistId();
-        WaitlistEntry entry = new WaitlistEntry(id, patient.getPatientId(),
-            doctor.getDoctorId(), date, WaitlistStatus.WAITING,
-            DateUtils.now(), (int) count + 1, notes);
-        entry.resolve(patient, doctor);
-
-        store.waitlist.add(entry);
-        store.saveWaitlist();
-        Console.success("Added to waitlist as position #" + entry.getQueuePosition());
-        Console.fieldLine("  Waitlist ID", id);
-    }
-
-    public void removeFromWaitlist() {
-        Console.header("REMOVE FROM WAITLIST");
-        String id = input.readString("  Waitlist ID : ").toUpperCase();
-        WaitlistEntry entry = store.waitlist.stream()
-            .filter(w -> w.getWaitlistId().equalsIgnoreCase(id))
-            .findFirst().orElse(null);
-
-        if (entry == null)                                  { Console.error("Not found: " + id); return; }
-        if (entry.getStatus() != WaitlistStatus.WAITING)   { Console.warn("Not in WAITING status."); return; }
-        if (!input.readYesNo("  Remove this entry? (y/n) : ")) { Console.info("Cancelled."); return; }
-
-        entry.setStatus(WaitlistStatus.REMOVED);
-        store.saveWaitlist();
-        Console.success("Waitlist entry " + id + " removed.");
-    }
-
-    // =========================================================================
     // DOCTOR SCHEDULE VIEW
     // =========================================================================
 
@@ -654,13 +575,7 @@ public class AppointmentService {
             }
         }
 
-        long wl = store.waitlist.stream()
-            .filter(w -> w.getDoctorId().equals(doctor.getDoctorId())
-                      && w.getPreferredDate().equals(date)
-                      && w.getStatus() == WaitlistStatus.WAITING)
-            .count();
         System.out.println("  " + "-".repeat(60));
-        System.out.printf("  Waitlisted: %d patient(s)%n", wl);
     }
 
     // =========================================================================
@@ -675,8 +590,6 @@ public class AppointmentService {
         long cancelled = countStatus(AppointmentStatus.CANCELLED);
         long completed = countStatus(AppointmentStatus.COMPLETED);
         long noShow    = countStatus(AppointmentStatus.NO_SHOW);
-        long waiting   = store.waitlist.stream()
-            .filter(w -> w.getStatus() == WaitlistStatus.WAITING).count();
 
         System.out.println("  +" + "=".repeat(48) + "+");
         System.out.println("  |" + Console.center("APPOINTMENT STATISTICS", 48) + "|");
@@ -687,7 +600,6 @@ public class AppointmentService {
         System.out.printf ("  |  %-32s %12d  |%n", "[v] Completed", completed);
         System.out.printf ("  |  %-32s %12d  |%n", "[X] Cancelled", cancelled);
         System.out.printf ("  |  %-32s %12d  |%n", "[-] No Show",   noShow);
-        System.out.printf ("  |  %-32s %12d  |%n", "[o] Waitlisted",waiting);
         System.out.println("  +" + "=".repeat(48) + "+");
 
         if (total == 0) return;
@@ -1532,7 +1444,7 @@ public class AppointmentService {
                 freeIndex++;
             }
         }
-        System.out.println("  [0] Cancel / Join Waitlist");
+        System.out.println("  [0] Cancel");
         System.out.println("  " + "-".repeat(48));
         if (hasPastSlot) Console.warn("Selected time has already passed.");
 
@@ -1571,7 +1483,7 @@ public class AppointmentService {
                 freeIndex++;
             }
         }
-        System.out.println("  [0] Cancel / Join Waitlist");
+        System.out.println("  [0] Cancel");
         System.out.println("  " + "-".repeat(48));
 
         if (selectable.isEmpty()) return null;
@@ -1579,79 +1491,6 @@ public class AppointmentService {
         int choice = input.readIntInRange("\n  Select slot : ", 0, selectable.size());
         if (choice == 0) { Console.info("No slot selected."); return null; }
         return selectable.get(choice);
-    }
-
-    /** When slots are full, offer the patient the waitlist. */
-    private void offerWaitlist(Patient patient, Doctor doctor, String date) {
-        Console.warn("No available slots for Dr. " + doctor.getName() + " on " +
-            DateUtils.pretty(date) + ".");
-        if (input.readYesNo("  Join the waitlist for this doctor/date? (y/n) : ")) {
-            joinWaitlistDirect(patient, doctor, date);
-        } else {
-            Console.info("Booking cancelled.");
-        }
-    }
-
-    private void joinWaitlistDirect(Patient patient, Doctor doctor, String date) {
-        if (!isDoctorAvailableOnDate(doctor, date)) {
-            Console.warn("Cannot join waitlist because Dr. " + doctor.getName() +
-                " is not available on " + DateUtils.pretty(date) + " (" + dayName(date) + ").");
-            return;
-        }
-        if (!hasFutureSlotForDate(doctor, date)) {
-            Console.warn("Cannot join waitlist because there are no remaining future slots for Dr. " +
-                doctor.getName() + " on " + DateUtils.pretty(date) + ".");
-            return;
-        }
-
-        long count = store.waitlist.stream()
-            .filter(w -> w.getDoctorId().equals(doctor.getDoctorId())
-                      && w.getPreferredDate().equals(date)
-                      && w.getStatus() == WaitlistStatus.WAITING)
-            .count();
-        if (count >= WAITLIST_MAX) { Console.error("Waitlist is also full."); return; }
-
-        String notes = input.readOptional("  Notes (optional) : ");
-        String id    = store.ids.nextWaitlistId();
-        WaitlistEntry e = new WaitlistEntry(id, patient.getPatientId(),
-            doctor.getDoctorId(), date, WaitlistStatus.WAITING,
-            DateUtils.now(), (int) count + 1, notes);
-        e.resolve(patient, doctor);
-
-        store.waitlist.add(e);
-        store.saveWaitlist();
-        Console.success("Added to waitlist at position #" + e.getQueuePosition() + ". ID: " + id);
-    }
-
-    /** Auto-promote top waitlist entry when a slot is freed. */
-    private void autoPromote(String doctorId, String date, String freedSlot) {
-        if (isPastSlot(date, freedSlot)) return;
-
-        WaitlistEntry next = store.waitlist.stream()
-            .filter(w -> w.getDoctorId().equals(doctorId)
-                      && w.getPreferredDate().equals(date)
-                      && w.getStatus() == WaitlistStatus.WAITING)
-            .min(Comparator.comparingInt(WaitlistEntry::getQueuePosition))
-            .orElse(null);
-        if (next == null) return;
-
-        Doctor  doc = store.doctors.get(doctorId);
-        Patient pat = store.patients.get(next.getPatientId());
-
-        String id   = store.ids.nextAppointmentId();
-        Appointment promoted = new Appointment(id, next.getPatientId(), doctorId,
-            date, freedSlot, AppointmentStatus.BOOKED,
-            "Auto-promoted from waitlist " + next.getWaitlistId(), DateUtils.now());
-        promoted.resolve(pat, doc);
-
-        store.appointments.add(promoted);
-        next.setStatus(WaitlistStatus.PROMOTED);
-        store.saveAppointments();
-        store.saveWaitlist();
-
-        Console.success("Waitlisted patient auto-promoted: " +
-            (pat != null ? pat.getName() : next.getPatientId()));
-        Console.fieldLine("  New Appointment ID", id);
     }
 
     /** Admin picks an existing patient or creates a new walk-in profile. */

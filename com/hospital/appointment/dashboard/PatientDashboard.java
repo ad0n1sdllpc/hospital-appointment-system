@@ -11,7 +11,7 @@ import com.hospital.appointment.util.*;
  * Patient Dashboard — scoped to the logged-in patient's own records.
  *
  * Options:
- *   [1] Book New Appointment (includes Waitlist when full)
+ *   [1] Book New Appointment
  *   [2] My Upcoming Appointments
  *   [3] Cancel My Appointment
  *   [4] My Appointment History

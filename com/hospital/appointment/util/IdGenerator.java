@@ -7,7 +7,6 @@ public class IdGenerator {
 
     private int appointmentSeq = 1;
     private int patientSeq     = 1;
-    private int waitlistSeq    = 1;
     private int userSeq        = 1;
 
     public String nextAppointmentId() {
@@ -18,17 +17,12 @@ public class IdGenerator {
         return String.format("PAT-%d-%03d", LocalDate.now().getYear(), patientSeq++);
     }
 
-    public String nextWaitlistId() {
-        return String.format("WL-%d-%03d", LocalDate.now().getYear(), waitlistSeq++);
-    }
-
     public String nextUserId() {
         return String.format("USR-%03d", userSeq++);
     }
 
     public void syncAppointment(int n) { if (n >= appointmentSeq) appointmentSeq = n + 1; }
     public void syncPatient(int n)     { if (n >= patientSeq)     patientSeq     = n + 1; }
-    public void syncWaitlist(int n)    { if (n >= waitlistSeq)    waitlistSeq    = n + 1; }
     public void syncUser(int n)        { if (n >= userSeq)        userSeq        = n + 1; }
 
     /** Extract trailing numeric part of an ID like APT-2026-007 or USR-003. */

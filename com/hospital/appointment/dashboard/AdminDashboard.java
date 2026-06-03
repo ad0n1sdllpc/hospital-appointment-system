@@ -16,7 +16,7 @@ import java.util.List;
  *
  * Options:
  *   Appointments : book, view all, detail, reschedule, cancel, complete, schedule
- *   Management   : manage doctors, manage patients, waitlist, report
+ *   Management   : manage doctors, manage patients, report
  *   Search/Filter: search all, filter by status, filter by department
  */
 public class AdminDashboard {
@@ -41,7 +41,7 @@ public class AdminDashboard {
             boolean pauseAfterAction = true;
             try {
             Console.adminDashboard(admin.getFullName());
-            int choice = input.readIntInRange("  Your choice : ", 0, 15);
+            int choice = input.readIntInRange("  Your choice : ", 0, 13);
             System.out.println();
 
             switch (choice) {
@@ -53,16 +53,14 @@ public class AdminDashboard {
                 case 5  -> apptSvc.cancelAppointment(null);
                 case 6  -> apptSvc.completeAppointment(null);
                 case 7  -> apptSvc.viewDoctorSchedule();
-                case 8  -> manageWaitlist();
                 // ── Management ───────────────────────────────────────────────
-                case 9  -> manageDoctors();
-                case 10 -> managePatients();
-                case 11 -> apptSvc.viewWaitlist();
-                case 12 -> apptSvc.viewReport();
+                case 8  -> manageDoctors();
+                case 9  -> managePatients();
+                case 10 -> apptSvc.viewReport();
                 // ── Search & Filter ──────────────────────────────────────────
-                case 13 -> apptSvc.searchAll();
-                case 14 -> apptSvc.filterByStatus();
-                case 15 -> apptSvc.filterByDepartment();
+                case 11 -> apptSvc.searchAll();
+                case 12 -> apptSvc.filterByStatus();
+                case 13 -> apptSvc.filterByDepartment();
                 // ── Logout ───────────────────────────────────────────────────
                 case 0  -> {
                     pauseAfterAction = false;
@@ -283,20 +281,6 @@ public class AdminDashboard {
         u.setActive(false);
         store.saveUsers();
         Console.success("Patient account deactivated.");
-    }
-
-    // =========================================================================
-    // MANAGE WAITLIST
-    // =========================================================================
-
-    private void manageWaitlist() {
-        Console.header("MANAGE WAITLIST");
-        System.out.println("  [1] View Waitlist");
-        System.out.println("  [2] Remove Entry");
-        System.out.println("  [0] Back");
-        int choice = input.readIntInRange("\n  Choice : ", 0, 2);
-        if (choice == 1) apptSvc.viewWaitlist();
-        if (choice == 2) apptSvc.removeFromWaitlist();
     }
 
     // =========================================================================
