@@ -644,63 +644,93 @@ public class AppointmentService {
         Console.header("SET PREFERRED TIME SLOTS");
         Console.fieldLine("  Doctor", "Dr. " + doctor.getName());
         Console.fieldLine("  Default availability", "24/7 unless marked unavailable");
-        System.out.println();
-        System.out.println("  Set availability for:");
-        System.out.println("  [1] Today");
-        System.out.println("  [2] Specific Date");
-        int dateChoice = input.readIntInRange("\n  Choice : ", 1, 2);
-        String date = dateChoice == 1
-            ? DateUtils.today()
-            : input.readFutureDate("  Date to configure (yyyy-MM-dd) : ");
 
-        Map<String, List<String>> dateSlots = parseDateSlotMap(doctor.getAvailableSlots());
-        List<String> currentSlots = dateSlots.containsKey(date)
-            ? dateSlots.get(date)
-            : DEFAULT_SLOTS;
-
-        Console.fieldLine("  Date", date);
-        Console.fieldLine("  Current preferred slots", currentSlots.isEmpty() ? "Default 24-hour slots" : String.join(", ", currentSlots));
-        debugSlotStates("Before availability update", doctor, date, null);
-        System.out.println();
-        System.out.println("  Hourly system slots:");
-        for (int i = 0; i < DEFAULT_SLOTS.size(); i++)
-            System.out.printf("  [%d] %s%n", i + 1, DEFAULT_SLOTS.get(i));
-
-        System.out.println();
-        System.out.println("  Enter slot numbers for this date only, separated by commas (e.g. 1,2,3,5).");
-        System.out.println("  Press Enter for all 24 hourly slots on this date, or type default to clear preferred slots:");
-        String raw = input.readOptional("  > ");
-
-        List<String> selectedSlots;
-        if (raw.equalsIgnoreCase("default")) {
-            selectedSlots = Collections.emptyList();
-            dateSlots.remove(date);
-        } else if (raw.isEmpty()) {
-            selectedSlots = new ArrayList<>(DEFAULT_SLOTS);
-            dateSlots.put(date, selectedSlots);
-        } else {
-            selectedSlots = new ArrayList<>();
-            for (String tok : raw.split(",")) {
-                try {
-                    int idx = Integer.parseInt(tok.trim()) - 1;
-                    if (idx >= 0 && idx < DEFAULT_SLOTS.size()) {
-                        selectedSlots.add(DEFAULT_SLOTS.get(idx));
-                    }
-                } catch (NumberFormatException ignored) {}
-            }
-            if (selectedSlots.isEmpty()) {
-                Console.warn("No valid slot numbers selected. Availability was not changed.");
+        while (true) {
+            System.out.println();
+            System.out.println("  Set availability for:");
+            System.out.println("  [1] Today");
+            System.out.println("  [2] Specific Date");
+            System.out.println("  [0] Back");
+            int dateChoice = input.readIntInRange("\n  Choice : ", 0, 2);
+            if (dateChoice == 0) {
+                Console.info("Returning to dashboard.");
                 return;
             }
-            dateSlots.put(date, selectedSlots);
-        }
 
-        doctor.setAvailableSlots(encodeScheduleConfig(dateSlots, parseUnavailableEntries(doctor.getAvailableSlots())));
-        store.saveDoctors();
-        debugSlotStates("After availability update", doctor, date, null);
-        Console.success("Preferred schedule updated for " + date + " only.");
-        Console.fieldLine("  Date", date);
-        Console.fieldLine("  Preferred Slots", selectedSlots.isEmpty() ? "Default 24-hour slots" : String.join(", ", selectedSlots));
+            String date = dateChoice == 1
+                ? DateUtils.today()
+                : input.readFutureDate("  Date to configure (yyyy-MM-dd) : ");
+
+            Map<String, List<String>> dateSlots = parseDateSlotMap(doctor.getAvailableSlots());
+            List<String> currentSlots = dateSlots.containsKey(date)
+                ? dateSlots.get(date)
+                : DEFAULT_SLOTS;
+
+            Console.fieldLine("  Date", date);
+            Console.fieldLine("  Current preferred slots", currentSlots.isEmpty() ? "Default 24-hour slots" : String.join(", ", currentSlots));
+            System.out.println();
+            System.out.println("  Hourly system slots:");
+            for (int i = 0; i < DEFAULT_SLOTS.size(); i++) {
+                String slot = DEFAULT_SLOTS.get(i);
+                String note = isPastSlot(date, slot) ? "  [unavailable - past]" : "";
+                System.out.printf("  [%d] %s%s%n", i + 1, slot, note);
+            }
+
+            System.out.println();
+            System.out.println("  Enter slot numbers for this date only, separated by commas (e.g. 1,2,3,5).");
+            System.out.println("  Press Enter for all remaining future hourly slots on this date.");
+            System.out.println("  Type default to clear preferred slots, or 0 to go back:");
+            String raw = input.readOptional("  > ");
+            if (raw.equals("0")) continue;
+
+            List<String> selectedSlots;
+            if (raw.equalsIgnoreCase("default")) {
+                selectedSlots = Collections.emptyList();
+                dateSlots.remove(date);
+            } else if (raw.isEmpty()) {
+                selectedSlots = DEFAULT_SLOTS.stream()
+                    .filter(slot -> !isPastSlot(date, slot))
+                    .collect(Collectors.toCollection(ArrayList::new));
+                if (selectedSlots.isEmpty()) {
+                    Console.warn("No future slots remain for this date. Preferred schedule was not changed.");
+                    continue;
+                }
+                dateSlots.put(date, selectedSlots);
+            } else {
+                Set<String> selected = new LinkedHashSet<>();
+                List<String> pastSelections = new ArrayList<>();
+                for (String tok : raw.split(",")) {
+                    try {
+                        int idx = Integer.parseInt(tok.trim()) - 1;
+                        if (idx >= 0 && idx < DEFAULT_SLOTS.size()) {
+                            String slot = DEFAULT_SLOTS.get(idx);
+                            if (isPastSlot(date, slot)) {
+                                pastSelections.add(slot);
+                            } else {
+                                selected.add(slot);
+                            }
+                        }
+                    } catch (NumberFormatException ignored) {}
+                }
+                if (!pastSelections.isEmpty()) {
+                    Console.error("Cannot set past time slots for today: " + String.join(", ", pastSelections));
+                    Console.info("Preferred schedule was not changed.");
+                    continue;
+                }
+                selectedSlots = new ArrayList<>(selected);
+                if (selectedSlots.isEmpty()) {
+                    Console.warn("No valid slot numbers selected. Availability was not changed.");
+                    continue;
+                }
+                dateSlots.put(date, selectedSlots);
+            }
+
+            doctor.setAvailableSlots(encodeScheduleConfig(dateSlots, parseUnavailableEntries(doctor.getAvailableSlots())));
+            store.saveDoctors();
+            Console.success("Preferred schedule updated for " + date + " only.");
+            Console.fieldLine("  Date", date);
+            Console.fieldLine("  Preferred Slots", selectedSlots.isEmpty() ? "Default 24-hour slots" : String.join(", ", selectedSlots));
+        }
     }
 
     public void setDoctorUnavailable(Doctor doctor) {
