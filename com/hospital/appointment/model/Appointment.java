@@ -71,10 +71,6 @@ public class Appointment {
     public String toDetailBlock() {
         String line = "=".repeat(64);
         String patName    = (patient != null) ? patient.getName()              : patientId;
-        String patAge     = (patient != null) ? String.valueOf(patient.getAge()) : "?";
-        String patAddr    = (patient != null) ? patient.getAddress()           : "?";
-        String patContact = (patient != null) ? patient.getContactNumber()     : "?";
-        String patBlood   = (patient != null) ? patient.getBloodType()         : "?";
         String docName    = (doctor  != null) ? "Dr. " + doctor.getName()      : doctorId;
         String dept       = (doctor  != null) ? doctor.getDepartment().getDisplayName() : "?";
         String spec       = (doctor  != null) ? doctor.getSpecialization()     : "?";
@@ -83,13 +79,8 @@ public class Appointment {
             "%n  %s%n" +
             "  Appointment ID  : %s%n" +
             "  Status          : %s%n" +
-            "  --- PATIENT ----%n" +
             "  Patient ID      : %s%n" +
             "  Name            : %s%n" +
-            "  Age             : %s%n" +
-            "  Address         : %s%n" +
-            "  Contact         : %s%n" +
-            "  Blood Type      : %s%n" +
             "  --- APPOINTMENT ----%n" +
             "  Doctor          : %s%n" +
             "  Department      : %s%n" +
@@ -102,8 +93,7 @@ public class Appointment {
             line,
             appointmentId,
             status.getLabel(),
-            patientId, patName, patAge, patAddr, patContact,
-            patBlood.isEmpty() ? "N/A" : patBlood,
+            patientId, patName,
             docName, dept, spec,
             date, timeSlot,
             notes.isEmpty() ? "None" : notes,
