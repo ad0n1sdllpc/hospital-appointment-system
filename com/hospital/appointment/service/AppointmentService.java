@@ -706,61 +706,108 @@ public class AppointmentService {
     public void setDoctorUnavailable(Doctor doctor) {
         Console.header("SET DOCTOR UNAVAILABILITY");
         Console.fieldLine("  Doctor", "Dr. " + doctor.getName());
-        System.out.println();
-        System.out.println("  Mark unavailable for:");
-        System.out.println("  [1] Today");
-        System.out.println("  [2] Specific Date");
-        System.out.println("  [3] Date Range");
-        System.out.println("  [4] Remove Unavailability");
-        int choice = input.readIntInRange("\n  Choice : ", 1, 4);
-
         Set<String> unavailable = parseUnavailableEntries(doctor.getAvailableSlots());
-        String entry;
-        if (choice == 1) {
-            entry = DateUtils.today();
-        } else if (choice == 2) {
-            entry = input.readFutureDate("  Date (yyyy-MM-dd) : ");
-        } else if (choice == 3) {
-            String start = input.readFutureDate("  Start Date (yyyy-MM-dd) : ");
-            String end = input.readFutureDate("  End Date (yyyy-MM-dd)   : ");
-            LocalDate startDate = DateUtils.parseDate(start);
-            LocalDate endDate = DateUtils.parseDate(end);
-            if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
-                Console.error("Invalid date range.");
+
+        while (true) {
+            System.out.println();
+            System.out.println("  Mark unavailable for:");
+            System.out.println("  [1] Today");
+            System.out.println("  [2] Specific Date");
+            System.out.println("  [3] Date Range");
+            System.out.println("  [4] Remove Unavailability");
+            System.out.println("  [0] Back");
+            int choice = input.readIntInRange("\n  Choice : ", 0, 4);
+
+            if (choice == 0) {
+                Console.info("Returning to dashboard.");
                 return;
             }
-            entry = start + DATE_RANGE_SEPARATOR + end;
-        } else {
-            removeDoctorUnavailability(doctor, unavailable);
-            return;
-        }
 
-        unavailable.add(entry);
-        doctor.setAvailableSlots(encodeScheduleConfig(parseDateSlotMap(doctor.getAvailableSlots()), unavailable));
-        store.saveDoctors();
-        Console.success("Dr. " + doctor.getName() + " marked unavailable.");
-        Console.fieldLine("  Unavailable", entry.replace(DATE_RANGE_SEPARATOR, " to "));
+            String entry;
+            if (choice == 1) {
+                entry = DateUtils.today();
+                if (isUnavailableInSet(unavailable, entry)) {
+                    Console.error("You already set unavailability for today.");
+                    continue;
+                }
+            } else if (choice == 2) {
+                entry = input.readFutureDate("  Date (yyyy-MM-dd) : ");
+                if (isUnavailableInSet(unavailable, entry)) {
+                    Console.error("This date is already marked unavailable.");
+                    continue;
+                }
+            } else if (choice == 3) {
+                String start = input.readFutureDate("  Start Date (yyyy-MM-dd) : ");
+                String end = input.readFutureDate("  End Date (yyyy-MM-dd)   : ");
+                LocalDate startDate = DateUtils.parseDate(start);
+                LocalDate endDate = DateUtils.parseDate(end);
+                if (startDate == null || endDate == null || endDate.isBefore(startDate)) {
+                    Console.error("Invalid date range.");
+                    continue;
+                }
+                entry = start + DATE_RANGE_SEPARATOR + end;
+                if (unavailable.contains(entry)) {
+                    Console.error("This date range is already marked unavailable.");
+                    continue;
+                }
+            } else {
+                removeDoctorUnavailability(doctor, unavailable);
+                continue;
+            }
+
+            unavailable.add(entry);
+            doctor.setAvailableSlots(encodeScheduleConfig(parseDateSlotMap(doctor.getAvailableSlots()), unavailable));
+            store.saveDoctors();
+            Console.success("Dr. " + doctor.getName() + " marked unavailable.");
+            Console.fieldLine("  Unavailable", entry.replace(DATE_RANGE_SEPARATOR, " to "));
+        }
     }
 
     private void removeDoctorUnavailability(Doctor doctor, Set<String> unavailable) {
-        if (unavailable.isEmpty()) {
-            Console.info("No unavailable dates or ranges are configured.");
-            return;
-        }
+        while (true) {
+            if (unavailable.isEmpty()) {
+                Console.info("No unavailable dates or ranges are configured.");
+                return;
+            }
 
-        List<String> entries = new ArrayList<>(unavailable);
-        System.out.println();
-        for (int i = 0; i < entries.size(); i++) {
-            System.out.printf("  [%d] %s%n", i + 1, entries.get(i).replace(DATE_RANGE_SEPARATOR, " to "));
-        }
-        System.out.println("  [0] Cancel");
-        int choice = input.readIntInRange("\n  Remove : ", 0, entries.size());
-        if (choice == 0) { Console.info("Cancelled."); return; }
+            List<String> entries = new ArrayList<>(unavailable);
+            System.out.println();
+            for (int i = 0; i < entries.size(); i++) {
+                System.out.printf("  [%d] %s%n", i + 1, entries.get(i).replace(DATE_RANGE_SEPARATOR, " to "));
+            }
+            System.out.println("  [0] Back");
+            int choice = input.readIntInRange("\n  Remove : ", 0, entries.size());
+            if (choice == 0) {
+                Console.info("Returning to unavailability menu.");
+                return;
+            }
 
-        unavailable.remove(entries.get(choice - 1));
-        doctor.setAvailableSlots(encodeScheduleConfig(parseDateSlotMap(doctor.getAvailableSlots()), unavailable));
-        store.saveDoctors();
-        Console.success("Unavailability removed.");
+            unavailable.remove(entries.get(choice - 1));
+            doctor.setAvailableSlots(encodeScheduleConfig(parseDateSlotMap(doctor.getAvailableSlots()), unavailable));
+            store.saveDoctors();
+            Console.success("Unavailability removed.");
+        }
+    }
+
+    private boolean isUnavailableInSet(Set<String> unavailable, String date) {
+        LocalDate selected = DateUtils.parseDate(date);
+        if (selected == null) return false;
+
+        for (String entry : unavailable) {
+            if (entry.contains(DATE_RANGE_SEPARATOR)) {
+                String[] dates = entry.split("\\.\\.", 2);
+                LocalDate start = DateUtils.parseDate(dates[0]);
+                LocalDate end = DateUtils.parseDate(dates[1]);
+                if (start != null && end != null
+                    && !selected.isBefore(start)
+                    && !selected.isAfter(end)) {
+                    return true;
+                }
+            } else if (entry.equals(date)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // =========================================================================
