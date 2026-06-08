@@ -16,7 +16,7 @@ public class Doctor {
     private Department department;
     private String     specialization;
     private int        yearsOfExperience;
-    private String     schedule;          // e.g. "Mon-Fri"
+    private String     schedule;          // legacy field; doctors are 24/7 by default
     private String     availableSlots;    // date-specific slots only: DATES:yyyy-MM-dd=HH:MM,...
 
     public Doctor(String doctorId, String userId, String name, Department department,
@@ -58,8 +58,8 @@ public class Doctor {
 
     /** Row used in doctor selection lists */
     public String toListEntry(int index) {
-        return String.format("  %2d | %-5s | %-20s | %-26s | %-10s | %d yrs",
-            index, doctorId, name, department.getDisplayName(), schedule, yearsOfExperience);
+        return String.format("  %2d | %-5s | %-20s | %-26s | %d yrs",
+            index, doctorId, name, department.getDisplayName(), yearsOfExperience);
     }
 
     @Override

@@ -6,7 +6,6 @@ import com.hospital.appointment.storage.DataStore;
 import com.hospital.appointment.ui.Console;
 import com.hospital.appointment.util.*;
 
-import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.*;
@@ -33,7 +32,7 @@ public class AppointmentService {
     private static final String SCHEDULE_SECTION_SEPARATOR = "#";
     private static final String DATE_RANGE_SEPARATOR = "..";
     private static final String NO_SLOTS = "NONE";
-    private static final boolean SLOT_DEBUG = true;
+    private static final boolean SLOT_DEBUG = false;
 
     private static final ConcernOption[] CONCERN_OPTIONS = {
         new ConcernOption("Chest pain, palpitations, high blood pressure", Department.CARDIOLOGY),
@@ -952,9 +951,9 @@ public class AppointmentService {
     private Doctor promptDoctorSelect(List<Doctor> docs, String title) {
         Console.section(title);
         System.out.println();
-        System.out.printf("  %-4s %-6s %-18s %-20s %-22s %-13s %-15s %s%n",
-            "#", "ID", "Name", "Department", "Specialization", "Schedule", "Slots", "Expertise");
-        System.out.println("  " + "-".repeat(140));
+        System.out.printf("  %-4s %-6s %-18s %-20s %-22s %-15s %s%n",
+            "#", "ID", "Name", "Department", "Specialization", "Slots", "Expertise");
+        System.out.println("  " + "-".repeat(124));
         for (int i = 0; i < docs.size(); i++)
             System.out.println(toGuidedDoctorRow(docs.get(i), i + 1));
         System.out.println("  " + "-".repeat(140));
@@ -966,13 +965,12 @@ public class AppointmentService {
     }
 
     private String toGuidedDoctorRow(Doctor doctor, int index) {
-        return String.format("  %2d | %-5s | Dr. %-14s | %-20s | %-22s | %-13s | %-15s %s",
+        return String.format("  %2d | %-5s | Dr. %-14s | %-20s | %-22s | %-15s %s",
             index,
             doctor.getDoctorId(),
             doctor.getName(),
             fit(doctor.getDepartment().getDisplayName(), 20),
             fit(doctor.getSpecialization(), 22),
-            fit(doctor.getSchedule(), 13),
             fit(slotSummary(doctor), 15),
             fit(departmentDescription(doctor.getDepartment()), 34));
     }
@@ -1099,20 +1097,19 @@ public class AppointmentService {
 
     private void printBookableDoctorSuggestions(String title, List<Doctor> doctors, String date) {
         Console.section(title);
-        System.out.printf("  %-6s %-18s %-22s %-15s %s%n",
-            "ID", "Doctor", "Specialization", "Schedule", "Open Slots");
-        System.out.println("  " + "-".repeat(90));
+        System.out.printf("  %-6s %-18s %-22s %s%n",
+            "ID", "Doctor", "Specialization", "Open Slots");
+        System.out.println("  " + "-".repeat(74));
         for (Doctor doctor : doctors) {
             Set<String> taken = takenSlotsFor(doctor.getDoctorId(), date);
             String slots = getAvailableSlotsForDate(doctor, date).stream()
                 .filter(slot -> !taken.contains(slot))
                 .filter(slot -> !isPastSlot(date, slot))
                 .collect(Collectors.joining(", "));
-            System.out.printf("  %-6s Dr. %-14s %-22s %-15s %s%n",
+            System.out.printf("  %-6s Dr. %-14s %-22s %s%n",
                 doctor.getDoctorId(),
                 fit(doctor.getName(), 14),
                 fit(doctor.getSpecialization(), 22),
-                fit(doctor.getSchedule(), 15),
                 slots);
         }
     }
@@ -1129,62 +1126,6 @@ public class AppointmentService {
 
     private boolean isDoctorAvailableOnDate(Doctor doctor, String date) {
         return DateUtils.parseDate(date) != null && !isDateUnavailable(doctor, date);
-    }
-
-    private Set<DayOfWeek> parseScheduleDays(String schedule) {
-        Set<DayOfWeek> days = EnumSet.noneOf(DayOfWeek.class);
-        if (schedule == null || schedule.trim().isEmpty()) return days;
-
-        String normalized = schedule.trim().replace(" to ", "-").replace("/", ",");
-        if (normalized.equalsIgnoreCase("daily")
-            || normalized.equalsIgnoreCase("everyday")
-            || normalized.equalsIgnoreCase("every day")) {
-            return EnumSet.allOf(DayOfWeek.class);
-        }
-
-        for (String part : normalized.split(",")) {
-            String token = part.trim();
-            if (token.isEmpty()) continue;
-
-            if (token.contains("-")) {
-                String[] bounds = token.split("-", 2);
-                DayOfWeek start = parseDay(bounds[0]);
-                DayOfWeek end = parseDay(bounds[1]);
-                if (start != null && end != null) addDayRange(days, start, end);
-                continue;
-            }
-
-            DayOfWeek day = parseDay(token);
-            if (day != null) days.add(day);
-        }
-
-        return days;
-    }
-
-    private void addDayRange(Set<DayOfWeek> days, DayOfWeek start, DayOfWeek end) {
-        int current = start.getValue();
-        int target = end.getValue();
-        while (true) {
-            days.add(DayOfWeek.of(current));
-            if (current == target) break;
-            current = current == 7 ? 1 : current + 1;
-        }
-    }
-
-    private DayOfWeek parseDay(String rawDay) {
-        String day = rawDay.trim().toLowerCase();
-        if (day.length() >= 3) day = day.substring(0, 3);
-
-        return switch (day) {
-            case "mon" -> DayOfWeek.MONDAY;
-            case "tue" -> DayOfWeek.TUESDAY;
-            case "wed" -> DayOfWeek.WEDNESDAY;
-            case "thu" -> DayOfWeek.THURSDAY;
-            case "fri" -> DayOfWeek.FRIDAY;
-            case "sat" -> DayOfWeek.SATURDAY;
-            case "sun" -> DayOfWeek.SUNDAY;
-            default -> null;
-        };
     }
 
     private String dayName(String date) {

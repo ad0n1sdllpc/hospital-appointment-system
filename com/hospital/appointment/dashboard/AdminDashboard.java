@@ -107,14 +107,14 @@ public class AdminDashboard {
     private void listAllDoctors() {
         Console.header("ALL DOCTORS");
         if (store.doctors.isEmpty()) { Console.info("No doctors registered."); return; }
-        System.out.printf("  %-6s %-22s %-28s %-14s %-10s %-5s%n",
-            "ID", "Name", "Department", "Schedule", "Status", "Exp");
-        System.out.println("  " + "-".repeat(94));
+        System.out.printf("  %-6s %-22s %-28s %-10s %-5s%n",
+            "ID", "Name", "Department", "Status", "Exp");
+        System.out.println("  " + "-".repeat(78));
         store.doctors.values().forEach(d ->
-            System.out.printf("  %-6s %-22s %-28s %-14s %-10s %d yrs%n",
+            System.out.printf("  %-6s %-22s %-28s %-10s %d yrs%n",
                 d.getDoctorId(), d.getName(),
                 d.getDepartment().getDisplayName(),
-                d.getSchedule(), doctorAccountStatus(d), d.getYearsOfExperience()));
+                doctorAccountStatus(d), d.getYearsOfExperience()));
     }
 
     private void addDoctor() {
@@ -124,7 +124,7 @@ public class AdminDashboard {
         String lastName = input.readString   ("  Last Name           : ");
         String spec     = input.readString   ("  Specialization      : ");
         int    yrs      = input.readPositiveInt("  Years of Experience: ");
-        String sched    = input.readString   ("  Schedule (e.g. Mon-Fri) : ");
+        String sched    = "24/7";
 
         Console.section("Select Department");
         Department[] depts = Department.values();
@@ -166,14 +166,11 @@ public class AdminDashboard {
         Doctor d  = store.doctors.get(id);
         if (d == null) { Console.error("Doctor not found: " + id); return; }
 
-        System.out.printf("  Current schedule     : %s%n", d.getSchedule());
         System.out.printf("  Current specialization: %s%n", d.getSpecialization());
         System.out.println();
 
-        String newSched = input.readOptional("  New schedule (Enter to keep)       : ");
         String newSpec  = input.readOptional("  New specialization (Enter to keep) : ");
 
-        if (!newSched.isEmpty()) d.setSchedule(newSched);
         if (!newSpec.isEmpty())  d.setSpecialization(newSpec);
 
         store.saveDoctors();
